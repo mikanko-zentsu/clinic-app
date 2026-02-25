@@ -10,7 +10,7 @@ import { NumPad } from "@/components/numpad";
 import { ReservationCalendar } from "@/components/reservation-calendar";
 import { DoctorSelector, type DoctorPublic } from "@/components/doctor-selector";
 import { DoctorAvatar } from "@/components/doctor-avatar";
-import { CheckCircle, ChevronLeft, Clock, Printer } from "lucide-react";
+import { CheckCircle, ChevronLeft, Clock } from "lucide-react";
 
 type Step = "doctor" | "calendar" | "time" | "card" | "confirm" | "complete";
 
@@ -224,6 +224,7 @@ function ReserveContent() {
           startTime: selectedTime,
           doctorId: selectedDoctor?.id ?? null,
           doctorName: selectedDoctor?.name ?? null,
+          maskedName,
         }),
       });
       const data = await res.json();
@@ -433,19 +434,11 @@ function ReserveContent() {
           <div className="space-y-4">
             <div className="rounded-xl bg-[hsl(210_40%_98%)] border border-[hsl(214_32%_91%)] divide-y divide-[hsl(214_32%_91%)]">
               {selectedDoctor && (
-                <div className="flex items-center px-5 py-4 gap-3">
+                <div className="flex items-center px-5 py-4">
                   <span className="w-28 text-sm font-semibold text-slate-500 flex-shrink-0">担当医</span>
-                  <div className="flex items-center gap-3">
-                    <DoctorAvatar
-                      name={selectedDoctor.name}
-                      initials={selectedDoctor.initials}
-                      avatarColor={selectedDoctor.avatarColor}
-                      size="sm"
-                    />
-                    <div>
-                      <p className="font-bold text-[hsl(222_47%_11%)]">{selectedDoctor.name}</p>
-                      <p className="text-xs text-slate-500">{selectedDoctor.specialty}</p>
-                    </div>
+                  <div>
+                    <p className="font-bold text-[hsl(222_47%_11%)]">{selectedDoctor.name}</p>
+                    <p className="text-xs text-slate-500">{selectedDoctor.specialty}</p>
                   </div>
                 </div>
               )}
@@ -496,15 +489,7 @@ function ReserveContent() {
             </h1>
 
             {selectedDoctor && (
-              <div className="flex items-center justify-center gap-3 mb-3">
-                <DoctorAvatar
-                  name={selectedDoctor.name}
-                  initials={selectedDoctor.initials}
-                  avatarColor={selectedDoctor.avatarColor}
-                  size="sm"
-                />
-                <span className="text-slate-700 font-semibold">{selectedDoctor.name} {selectedDoctor.role}</span>
-              </div>
+              <p className="text-slate-700 font-semibold mb-3">{selectedDoctor.name} {selectedDoctor.role}</p>
             )}
 
             <p className="text-slate-500 mb-8">
@@ -518,16 +503,6 @@ function ReserveContent() {
               </p>
             </div>
 
-            {/* Print button */}
-            <Button
-              variant="secondary"
-              className="w-full mb-6 gap-3 text-xl py-8 rounded-2xl"
-              onClick={() => window.print()}
-            >
-              <Printer className="w-6 h-6" />
-              印刷する
-            </Button>
-
             <p className="text-slate-400 text-sm">{countdown}秒後にトップページへ戻ります</p>
             <Button variant="outline" className="mt-4" onClick={() => router.push("/")}>
               今すぐ戻る
@@ -536,51 +511,6 @@ function ReserveContent() {
         </div>
       )}
 
-      {/* ── 印刷専用コンテンツ（@media print でのみ表示）── */}
-      {step === "complete" && (
-        <div id="reservation-print" style={{ display: "none" }}>
-          <div style={{ borderBottom: "2px solid #000", paddingBottom: "12px", marginBottom: "20px" }}>
-            <h1 style={{ fontSize: "20px", fontWeight: "bold", margin: "0 0 4px 0" }}>
-              健援堂鍼灸整骨院
-            </h1>
-            <p style={{ fontSize: "13px", color: "#555", margin: 0 }}>予約完了のお知らせ</p>
-          </div>
-
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "15px" }}>
-            <tbody>
-              <tr style={{ borderBottom: "1px solid #ddd" }}>
-                <td style={{ padding: "10px 0", fontWeight: "bold", width: "120px", color: "#555" }}>予約番号</td>
-                <td style={{ padding: "10px 0", fontSize: "24px", fontWeight: "900", letterSpacing: "0.1em" }}>
-                  {reservationNumber}
-                </td>
-              </tr>
-              <tr style={{ borderBottom: "1px solid #ddd" }}>
-                <td style={{ padding: "10px 0", fontWeight: "bold", color: "#555" }}>予約日時</td>
-                <td style={{ padding: "10px 0" }}>
-                  {selectedDate ? formatDate(selectedDate) : ""}
-                  {selectedTime ? `　${selectedTime}〜` : ""}
-                </td>
-              </tr>
-              {selectedDoctor && (
-                <tr style={{ borderBottom: "1px solid #ddd" }}>
-                  <td style={{ padding: "10px 0", fontWeight: "bold", color: "#555" }}>担当医</td>
-                  <td style={{ padding: "10px 0" }}>
-                    {selectedDoctor.name}　{selectedDoctor.role}
-                  </td>
-                </tr>
-              )}
-              <tr>
-                <td style={{ padding: "10px 0", fontWeight: "bold", color: "#555" }}>電話番号</td>
-                <td style={{ padding: "10px 0" }}>03-0000-0000</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <p style={{ marginTop: "28px", fontSize: "12px", color: "#888", textAlign: "center" }}>
-            お時間になりましたら受付にお声がけください。
-          </p>
-        </div>
-      )}
     </>
   );
 }

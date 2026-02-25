@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, UserRound } from "lucide-react";
+import { CalendarDays, ClipboardList, UserRound } from "lucide-react";
 
 export default function HomePage() {
   return (
@@ -15,7 +15,7 @@ export default function HomePage() {
 
         {/* Title */}
         <h1 className="text-3xl font-extrabold text-[hsl(222_47%_11%)] mb-2">
-          ようこそ健援堂鍼灸整骨院へ
+          ようこそ〇〇接骨院へ
         </h1>
         <h2 className="text-lg font-semibold text-sky-600 mb-4">
           受付システム
@@ -24,10 +24,10 @@ export default function HomePage() {
           ご希望の方法でご予約ください
         </p>
 
-        {/* Two buttons */}
+        {/* Buttons */}
         <div className="flex flex-col gap-4">
           <Link href="/reserve?mode=doctor">
-            <Button size="xl" className="w-full text-xl py-5 rounded-2xl shadow-md gap-3">
+            <Button size="xl" variant="outline" className="w-full text-xl py-5 rounded-2xl shadow-sm gap-3">
               <UserRound className="w-6 h-6" />
               担当医から予約する
             </Button>
@@ -36,6 +36,12 @@ export default function HomePage() {
             <Button size="xl" variant="outline" className="w-full text-xl py-5 rounded-2xl shadow-sm gap-3">
               <CalendarDays className="w-6 h-6" />
               日付から予約する
+            </Button>
+          </Link>
+          <Link href="/check">
+            <Button size="xl" variant="outline" className="w-full text-xl py-5 rounded-2xl shadow-sm gap-3">
+              <ClipboardList className="w-6 h-6" />
+              予約確認
             </Button>
           </Link>
         </div>

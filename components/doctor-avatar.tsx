@@ -4,10 +4,11 @@ interface DoctorAvatarProps {
   name: string;
   initials: string;
   avatarColor: string;
-  size?: "sm" | "md" | "lg";
+  size?: "xs" | "sm" | "md" | "lg";
 }
 
 const sizeMap = {
+  xs: { outer: "w-12 h-12", iconSize: 24, borderWidth: 2 },
   sm: { outer: "w-14 h-14", iconSize: 30, borderWidth: 2 },
   md: { outer: "w-20 h-20", iconSize: 44, borderWidth: 3 },
   lg: { outer: "w-32 h-32", iconSize: 72, borderWidth: 3 },

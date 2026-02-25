@@ -23,23 +23,3 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ── 印刷スタイル ── */
-@media print {
-  body * {
-    visibility: hidden;
-  }
-  #reservation-print,
-  #reservation-print * {
-    visibility: visible;
-  }
-  #reservation-print {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    padding: 32px;
-    font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Meiryo", sans-serif;
-    color: #000;
-    background: #fff;
-  }
-}

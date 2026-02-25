@@ -42,7 +42,7 @@ export function DoctorSelector({ selectedId, onSelect }: DoctorSelectorProps) {
   }
 
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="flex flex-col gap-4">
       {doctors.map((doctor) => {
         const isSelected = selectedId === doctor.id;
 
@@ -52,7 +52,7 @@ export function DoctorSelector({ selectedId, onSelect }: DoctorSelectorProps) {
             type="button"
             onClick={() => onSelect(doctor)}
             className={cn(
-              "relative flex flex-col items-center rounded-2xl border-2 pt-6 pb-5 px-3 text-center transition-all active:scale-[0.97] cursor-pointer",
+              "relative flex items-center gap-5 rounded-2xl border-2 p-5 text-left transition-all active:scale-[0.98] cursor-pointer w-full",
               isSelected
                 ? "border-sky-500 bg-sky-50 shadow-lg"
                 : "border-[hsl(214_32%_91%)] bg-white hover:border-sky-300 hover:bg-sky-50/40 hover:shadow-md"
@@ -60,46 +60,40 @@ export function DoctorSelector({ selectedId, onSelect }: DoctorSelectorProps) {
           >
             {/* Selected checkmark */}
             {isSelected && (
-              <CheckCircle className="absolute top-2 right-2 h-5 w-5 text-sky-500" />
+              <CheckCircle className="absolute top-3 right-3 h-5 w-5 text-sky-500" />
             )}
 
-            {/* Photo */}
-            <DoctorAvatar
-              name={doctor.name}
-              initials={doctor.initials}
-              avatarColor={doctor.avatarColor}
-              size="lg"
-            />
+            {/* Avatar */}
+            <div className="flex-shrink-0">
+              <DoctorAvatar
+                name={doctor.name}
+                initials={doctor.initials}
+                avatarColor={doctor.avatarColor}
+                size="xs"
+              />
+            </div>
 
-            {/* Role badge */}
-            <span
-              className="mt-4 inline-block rounded-full px-3 py-0.5 text-xs font-bold text-white"
-              style={{ backgroundColor: doctor.avatarColor }}
-            >
-              {doctor.role}
-            </span>
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-2 mb-2">
+                <p className="text-lg font-extrabold text-[hsl(222_47%_11%)] leading-tight">
+                  {doctor.name}
+                </p>
+                <span className="text-sm font-semibold text-slate-500">
+                  {doctor.role}
+                </span>
+              </div>
 
-            {/* Name */}
-            <p className="mt-1.5 text-lg font-extrabold text-[hsl(222_47%_11%)] leading-tight">
-              {doctor.name}
-            </p>
-            <p className="text-xs text-slate-400 mb-1">{doctor.nameKana}</p>
-
-            {/* Specialty */}
-            <p className="text-xs font-semibold text-sky-600 mb-3">{doctor.specialty}</p>
-
-            {/* Divider */}
-            <div className="w-full border-t border-slate-100 pt-3">
               {/* Available weekdays */}
-              <p className="text-xs text-slate-400 mb-1.5">診療日</p>
-              <div className="flex items-center justify-center gap-1 flex-wrap">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs text-slate-400">診療日</span>
                 {WEEKDAY_LABELS.map((label, idx) => {
                   const available = doctor.availableWeekdays.includes(idx);
                   return (
                     <span
                       key={label}
                       className={cn(
-                        "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold",
+                        "inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold",
                         available
                           ? idx === 0
                             ? "bg-red-100 text-red-600"
@@ -114,6 +108,11 @@ export function DoctorSelector({ selectedId, onSelect }: DoctorSelectorProps) {
                   );
                 })}
               </div>
+
+              <p className="text-xs text-slate-500">
+                {doctor.specialty}
+                <span className="ml-2 text-slate-400">{doctor.nameKana}</span>
+              </p>
             </div>
           </button>
         );
