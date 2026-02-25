@@ -217,7 +217,7 @@
       font-size: clamp(8px, 1vw, 12px);
     }
     /* 一括停止ボタン（カードヘッダー） */
-    .btn-slot-control { padding: 5px 13px; border-radius: 20px; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer; transition: all 0.12s; border: 1.5px solid; }
+    .btn-slot-control { padding: 5px 13px; border-radius: 20px; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer; transition: all 0.12s; border: 1.5px solid; white-space: nowrap; }
     .btn-slot-control:disabled { opacity: 0.35; cursor: not-allowed; }
     .btn-slot-stop    { background: hsl(0,72%,96%);   color: hsl(0,72%,44%);   border-color: hsl(0,72%,78%); }
     .btn-slot-stop:not(:disabled):hover    { background: hsl(0,72%,51%);   color: #fff; border-color: hsl(0,72%,51%); }
@@ -229,6 +229,16 @@
     .gantt-slot-selected { background: hsl(199,89%,82%) !important; border: 2px solid hsl(199,89%,45%) !important; }
     .gantt-slot-selected .gcell-add,
     .gantt-slot-selected .gcell-blocked { color: hsl(199,89%,28%); font-weight: 900; font-size: 16px; }
+    /* 移動モード */
+    .gantt-move-source { background: var(--primary) !important; border: none !important; }
+    .gantt-move-source .gcell-name { color: #fff !important; }
+    .gantt-move-target { background: hsl(199,89%,82%) !important; border: 2px solid hsl(199,89%,45%) !important; }
+    .gantt-move-dim { background: hsl(214,32%,93%) !important; opacity: 0.4; pointer-events: none !important; cursor: default !important; }
+    .gantt-move-candidate { cursor: pointer !important; pointer-events: auto !important; border: 1.5px dashed hsl(199,89%,55%); }
+    .gantt-move-candidate:hover { background: hsl(210,40%,95%) !important; border-color: hsl(199,89%,45%); }
+    .gcell-move-btn { display: none; position: absolute; top: 1px; right: 1px; background: var(--primary); color: #fff; border: none; border-radius: 4px; font-size: 9px; padding: 1px 4px; cursor: pointer; z-index: 1; font-family: inherit; line-height: 1.4; }
+    .gantt-reserved:hover .gcell-move-btn,
+    .gantt-unprocessed:hover .gcell-move-btn { display: block; }
 
     /* ⑤ Doctor name column — sticky, with tint bg set inline */
     .gantt-doc-td {
@@ -248,11 +258,12 @@
 
     /* Slot cells */
     .gantt-cell {
+      position: relative;
       text-align: center; vertical-align: middle;
       border-radius: 7px; cursor: pointer;
       transition: filter 0.1s, transform 0.08s;
       padding: 4px 2px;
-      overflow: hidden;
+      overflow: visible;
     }
     .gantt-cell:active { transform: scale(0.93); }
 
@@ -272,19 +283,6 @@
     .gantt-unprocessed:hover { filter: brightness(0.93); }
 
     /* 上部アラートバー — 背景なし赤字テキスト */
-    .dash-alert {
-      display: none; align-items: center; gap: 6px;
-      padding: 4px 16px; margin-bottom: 4px;
-      background: none; border: none;
-      font-size: 14px; font-weight: 700; color: #ff0000;
-      flex-shrink: 0;
-    }
-    .dash-alert.show { display: flex; }
-    .dash-alert-icon { font-size: 16px; flex-shrink: 0; }
-    .dash-alert-count {
-      font-size: 14px; font-weight: 800; color: #ff0000;
-    }
-
     /* ④ cancelled → not rendered (shown as empty instead) */
 
     /* ⑥ 過去の空き枠 — gray, not clickable */
@@ -692,12 +690,6 @@
       </div>
       <!-- ② ガントチャート (flex:1, no scroll) -->
       <div class="dash-gantt" id="dash-gantt-area">
-        <div class="dash-alert" id="dash-unprocessed-alert">
-          <span class="dash-alert-icon">&#9888;</span>
-          <span>未処理の予約があります</span>
-          <span class="dash-alert-count" id="dash-unprocessed-count">0</span>
-          <span>件</span>
-        </div>
         <div class="summary-bar" id="dash-summary-bar">
           <span class="summary-title-inline">本日の予約一覧</span>
           <div class="summary-stat-card"><span class="summary-card-text">予約数　<span id="stat-reservations">—</span></span></div>
@@ -706,6 +698,12 @@
           <div class="summary-stat-card"><span class="summary-card-text">田中　<span id="occ-tanaka-r">—</span></span></div>
           <div class="summary-stat-card"><span class="summary-card-text">鈴木　<span id="occ-suzuki-r">—</span></span></div>
           <div class="summary-stat-card"><span class="summary-card-text">佐藤　<span id="occ-sato-r">—</span></span></div>
+          <span id="dash-unprocessed-alert" style="display:none;align-items:center;gap:4px;font-size:22px;font-weight:700;color:#ff0000;margin-left:8px;">
+            <span>&#9888;</span>
+            <span>未処理の予約があります</span>
+            <span id="dash-unprocessed-count">0</span>
+            <span>件</span>
+          </span>
         </div>
         <div class="card">
           <div class="card-header">
@@ -713,8 +711,8 @@
               <h2 class="gantt-date-h2"><span class="gantt-date-text" id="dash-gantt-date"></span></h2>
               <!-- 通常モード -->
               <div id="gantt-normal-controls" style="display:flex;align-items:center;gap:6px;">
-                <button class="btn-slot-control btn-slot-stop"    onclick="enterBlockMode('stop')">停止</button>
-                <button class="btn-slot-control btn-slot-unblock" onclick="enterBlockMode('unblock')">停止解除</button>
+                <button class="btn-slot-control btn-slot-stop"    onclick="enterBlockMode('stop')">予約枠停止</button>
+                <button class="btn-slot-control btn-slot-unblock" onclick="enterBlockMode('unblock')">予約枠停止解除</button>
               </div>
               <!-- 選択モード -->
               <div id="gantt-select-controls" style="display:none;align-items:center;gap:8px;">
@@ -722,6 +720,12 @@
                 <button class="btn-slot-control btn-slot-stop" id="btn-execute-block" onclick="executeBlockMode()" disabled>0枠を停止</button>
                 <button class="btn-slot-control btn-slot-stop" id="btn-bulk-all" onclick="executeBulkAll()">一括停止</button>
                 <button class="btn-slot-control" style="background:hsl(214,32%,96%);color:hsl(214,32%,44%);border-color:hsl(214,32%,78%);" onclick="cancelBlockMode()">キャンセル</button>
+              </div>
+              <!-- 移動モード -->
+              <div id="gantt-move-controls" style="display:none;align-items:center;gap:8px;">
+                <span id="gantt-move-label" style="font-size:12px;font-weight:700;color:var(--primary);">移動モード：移動先を選択</span>
+                <button class="btn-slot-control" id="btn-execute-move" style="background:var(--primary);color:#fff;border-color:var(--primary);" onclick="executeMoveMode()" disabled>移動を確定する</button>
+                <button class="btn-slot-control" style="background:hsl(214,32%,96%);color:hsl(214,32%,44%);border-color:hsl(214,32%,78%);" onclick="cancelMoveMode()">キャンセル</button>
               </div>
             </div>
           </div>
@@ -820,14 +824,20 @@
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                 <h2 class="gantt-date-h2"><span class="gantt-date-text" id="rl-gantt-date">—</span></h2>
                 <div id="rl-gantt-normal-controls" style="display:flex;align-items:center;gap:6px;">
-                  <button class="btn-slot-control btn-slot-stop" onclick="enterBlockMode('stop')">停止</button>
-                  <button class="btn-slot-control btn-slot-unblock" onclick="enterBlockMode('unblock')">停止解除</button>
+                  <button class="btn-slot-control btn-slot-stop" onclick="enterBlockMode('stop')">予約枠停止</button>
+                  <button class="btn-slot-control btn-slot-unblock" onclick="enterBlockMode('unblock')">予約枠停止解除</button>
                 </div>
                 <div id="rl-gantt-select-controls" style="display:none;align-items:center;gap:8px;">
                   <span id="rl-gantt-select-label" style="font-size:12px;font-weight:700;">停止モード：枠を選択</span>
                   <button class="btn-slot-control btn-slot-stop" id="rl-btn-execute-block" onclick="executeBlockMode()" disabled>0枠を停止</button>
                   <button class="btn-slot-control btn-slot-stop" id="rl-btn-bulk-all" onclick="executeBulkAll()">一括停止</button>
                   <button class="btn-slot-control" style="background:hsl(214,32%,96%);color:hsl(214,32%,44%);border-color:hsl(214,32%,78%);" onclick="cancelBlockMode()">キャンセル</button>
+                </div>
+                <!-- 移動モード -->
+                <div id="rl-gantt-move-controls" style="display:none;align-items:center;gap:8px;">
+                  <span id="rl-gantt-move-label" style="font-size:12px;font-weight:700;color:var(--primary);">移動モード：移動先を選択</span>
+                  <button class="btn-slot-control" id="rl-btn-execute-move" style="background:var(--primary);color:#fff;border-color:var(--primary);" onclick="executeMoveMode()" disabled>移動を確定する</button>
+                  <button class="btn-slot-control" style="background:hsl(214,32%,96%);color:hsl(214,32%,44%);border-color:hsl(214,32%,78%);" onclick="cancelMoveMode()">キャンセル</button>
                 </div>
               </div>
             </div>
@@ -1188,7 +1198,9 @@
 
   const reservations = {
     'tanaka_09:00': { name: '山田 太郎',  card: '00001', status: '来院済' },
+    'tanaka_09:20': { name: '佐々木 健太', card: '11111', status: '予約済' },
     'suzuki_09:20': { name: '鈴木 花子',  card: '00002', status: '来院済' },
+    'suzuki_10:00': { name: '橋本 涼子',  card: '22222', status: '予約済' },
     'sato_09:40':   { name: '高橋 一郎',  card: '10234', status: '来院済' },
     'tanaka_10:00': { name: '伊藤 美咲',  card: '20018', status: '来院済' },
     'suzuki_10:20': { name: '渡辺 健二',  card: '30451', status: 'キャンセル' },
@@ -1218,6 +1230,79 @@
   let blockMode = false;
   let blockModeType = null;
   const selectedSlotKeys = new Set();
+
+  /* 移動モード */
+  var moveMode = false;
+  var moveSourceKey = null;
+  var moveTargetKey = null;
+
+  function enterMoveMode(key) {
+    moveMode = true;
+    moveSourceKey = key;
+    moveTargetKey = null;
+    document.getElementById('gantt-normal-controls').style.display = 'none';
+    document.getElementById('gantt-select-controls').style.display = 'none';
+    document.getElementById('gantt-move-controls').style.display = 'flex';
+    var rlN = document.getElementById('rl-gantt-normal-controls');
+    var rlS = document.getElementById('rl-gantt-select-controls');
+    var rlM = document.getElementById('rl-gantt-move-controls');
+    if (rlN) rlN.style.display = 'none';
+    if (rlS) rlS.style.display = 'none';
+    if (rlM) rlM.style.display = 'flex';
+    updateMoveControls();
+    activeRenderGantt();
+  }
+
+  function selectMoveTarget(key) {
+    moveTargetKey = (moveTargetKey === key) ? null : key;
+    updateMoveControls();
+    activeRenderGantt();
+  }
+
+  function updateMoveControls() {
+    var btn = document.getElementById('btn-execute-move');
+    var rlBtn = document.getElementById('rl-btn-execute-move');
+    var enabled = moveTargetKey !== null;
+    if (btn) { btn.disabled = !enabled; btn.style.opacity = enabled ? '1' : '0.5'; }
+    if (rlBtn) { rlBtn.disabled = !enabled; rlBtn.style.opacity = enabled ? '1' : '0.5'; }
+    var label = document.getElementById('gantt-move-label');
+    var rlLabel = document.getElementById('rl-gantt-move-label');
+    var text = moveTargetKey ? '移動先が選択されました' : '移動モード：移動先を選択';
+    if (label) label.textContent = text;
+    if (rlLabel) rlLabel.textContent = text;
+  }
+
+  function executeMoveMode() {
+    if (!moveSourceKey || !moveTargetKey) return;
+    var activeRes = getActiveReservations();
+    var src = activeRes[moveSourceKey];
+    if (!src) { cancelMoveMode(); return; }
+    var name = src.name;
+    var targetParts = moveTargetKey.split('_');
+    var targetDoc = DOCTORS.find(function(d) { return d.id === targetParts[0]; });
+    var targetDocName = targetDoc ? targetDoc.name.split(' ')[0] : targetParts[0];
+    var targetTime = targetParts[1];
+    activeRes[moveTargetKey] = { name: src.name, card: src.card, status: src.status };
+    delete activeRes[moveSourceKey];
+    cancelMoveMode();
+    showToast(name + 'さんの予約を ' + targetDocName + ' ' + targetTime + ' に移動しました');
+  }
+
+  function cancelMoveMode() {
+    moveMode = false;
+    moveSourceKey = null;
+    moveTargetKey = null;
+    document.getElementById('gantt-normal-controls').style.display = 'flex';
+    document.getElementById('gantt-select-controls').style.display = 'none';
+    document.getElementById('gantt-move-controls').style.display = 'none';
+    var rlN = document.getElementById('rl-gantt-normal-controls');
+    var rlS = document.getElementById('rl-gantt-select-controls');
+    var rlM = document.getElementById('rl-gantt-move-controls');
+    if (rlN) rlN.style.display = 'flex';
+    if (rlS) rlS.style.display = 'none';
+    if (rlM) rlM.style.display = 'none';
+    activeRenderGantt();
+  }
 
   function enterBlockMode(type) {
     blockMode = true;
@@ -1334,8 +1419,6 @@
 
         /* 固定要素の高さを実測 */
         var fixedH = 0;
-        var alertEl = document.getElementById('dash-unprocessed-alert');
-        if (alertEl && alertEl.classList.contains('show')) fixedH += alertEl.offsetHeight;
 
         var cardHeader = dashPage.querySelector('.card-header');
         if (cardHeader) fixedH += cardHeader.offsetHeight;
@@ -1498,8 +1581,22 @@
 
         const past = isPastSlot(time);
         const isSelected = blockMode && selectedSlotKeys.has(key);
+        const isEmpty = !res || res.status === 'キャンセル';
+        const isBooked = res && (res.status === '予約済' || res.status === '来院済');
+        const moveBtn = `<span class="gcell-move-btn" onclick="event.stopPropagation();enterMoveMode('${key}')">移動</span>`;
 
-        if (res && res.status === '停止') {
+        if (moveMode) {
+          /* 移動モード */
+          if (key === moveSourceKey) {
+            html += `<td class="gantt-cell gantt-move-source"><span class="gcell-name">${res.name}</span></td>`;
+          } else if (key === moveTargetKey) {
+            html += `<td class="gantt-cell gantt-move-target" onclick="selectMoveTarget('${key}')"></td>`;
+          } else if (isEmpty && !past && !(res && res.status === '停止')) {
+            html += `<td class="gantt-cell gantt-move-candidate" onclick="selectMoveTarget('${key}')"></td>`;
+          } else {
+            html += `<td class="gantt-cell gantt-move-dim">${res && res.status !== 'キャンセル' ? '<span class="gcell-name">' + res.name + '</span>' : ''}</td>`;
+          }
+        } else if (res && res.status === '停止') {
           /* 停止済み */
           if (blockMode && blockModeType === 'unblock') {
             html += `<td class="gantt-cell gantt-selectable ${isSelected ? 'gantt-slot-selected' : 'gantt-blocked'}" onclick="toggleSlotSelection('${key}')">
@@ -1516,11 +1613,13 @@
               <span class="gcell-name">${res.name}</span></td>`;
           } else if (past && res.status === '予約済') {
             html += `<td class="gantt-cell gantt-unprocessed" onclick="openDetailGantt('${key}')">
+              <span class="gcell-name">${res.name}</span>${moveBtn}</td>`;
+          } else if (res.status === '来院済') {
+            html += `<td class="gantt-cell gantt-visited" onclick="openDetailGantt('${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
           } else {
-            const cls = res.status === '来院済' ? 'gantt-visited' : 'gantt-reserved';
-            html += `<td class="gantt-cell ${cls}" onclick="openDetailGantt('${key}')">
-              <span class="gcell-name">${res.name}</span></td>`;
+            html += `<td class="gantt-cell gantt-reserved" onclick="openDetailGantt('${key}')">
+              <span class="gcell-name">${res.name}</span>${moveBtn}</td>`;
           }
         } else {
           /* 空き枠 */
@@ -1603,10 +1702,10 @@
     var el = document.getElementById('dash-unprocessed-alert');
     var countEl = document.getElementById('dash-unprocessed-count');
     if (count > 0) {
-      el.classList.add('show');
+      el.style.display = 'inline-flex';
       countEl.textContent = count;
     } else {
-      el.classList.remove('show');
+      el.style.display = 'none';
     }
   }
 
@@ -1629,6 +1728,8 @@
     '10567': { name:'小林 恵子', kana:'こばやし けいこ', dob:'1987年6月22日', gender:'女性', zip:'164-0011', phone:'090-2345-6789', address:'東京都中野区中央3-4-5', lastVisit:'2026年2月18日', notes:'肩関節周囲炎' },
     '20345': { name:'中村さやか', kana:'なかむら さやか', dob:'1994年10月8日', gender:'女性', zip:'113-0033', phone:'080-3456-7890', address:'東京都文京区本郷1-7-3', lastVisit:'2026年2月15日', notes:'ランニング後の膝痛' },
     '30789': { name:'木村 優子', kana:'きむら ゆうこ', dob:'1989年4月15日', gender:'女性', zip:'110-0005', phone:'070-4567-8901', address:'東京都台東区上野5-2-1', lastVisit:'2026年2月19日', notes:'慢性腰痛・デスクワーク' },
+    '11111': { name:'佐々木 健太', kana:'ささき けんた', dob:'1992年8月5日', gender:'男性', zip:'169-0075', phone:'090-5678-1234', address:'東京都新宿区高田馬場2-3-1', lastVisit:'2026年2月20日', notes:'腰痛' },
+    '22222': { name:'橋本 涼子', kana:'はしもと りょうこ', dob:'1986年11月17日', gender:'女性', zip:'158-0094', phone:'080-6789-2345', address:'東京都世田谷区玉川3-8-5', lastVisit:'2026年2月22日', notes:'肩こり・頭痛' },
   };
 
   /* ⑩ カルテ画像モックデータ */
@@ -3403,7 +3504,20 @@
         const res = resData[key];
         const past = pastFn(time);
         const isSelected = blockMode && selectedSlotKeys.has(key);
-        if (res && res.status === '停止') {
+        const isEmpty = !res || res.status === 'キャンセル';
+        const moveBtn = `<span class="gcell-move-btn" onclick="event.stopPropagation();enterMoveMode('${key}')">移動</span>`;
+
+        if (moveMode) {
+          if (key === moveSourceKey) {
+            html += `<td class="gantt-cell gantt-move-source"><span class="gcell-name">${res.name}</span></td>`;
+          } else if (key === moveTargetKey) {
+            html += `<td class="gantt-cell gantt-move-target" onclick="selectMoveTarget('${key}')"></td>`;
+          } else if (isEmpty && !past && !(res && res.status === '停止')) {
+            html += `<td class="gantt-cell gantt-move-candidate" onclick="selectMoveTarget('${key}')"></td>`;
+          } else {
+            html += `<td class="gantt-cell gantt-move-dim">${res && res.status !== 'キャンセル' ? '<span class="gcell-name">' + res.name + '</span>' : ''}</td>`;
+          }
+        } else if (res && res.status === '停止') {
           if (blockMode && blockModeType === 'unblock') {
             html += `<td class="gantt-cell gantt-selectable ${isSelected ? 'gantt-slot-selected' : 'gantt-blocked'}" onclick="toggleSlotSelection('${key}')">
               <span class="gcell-blocked">${isSelected ? '✓' : '停止'}</span></td>`;
@@ -3417,11 +3531,13 @@
             html += `<td class="gantt-cell gantt-selection-dim"><span class="gcell-name">${res.name}</span></td>`;
           } else if (past && res.status === '予約済') {
             html += `<td class="gantt-cell gantt-unprocessed" onclick="openDetailGantt('${key}')">
+              <span class="gcell-name">${res.name}</span>${moveBtn}</td>`;
+          } else if (res.status === '来院済') {
+            html += `<td class="gantt-cell gantt-visited" onclick="openDetailGantt('${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
           } else {
-            const cls = res.status === '来院済' ? 'gantt-visited' : 'gantt-reserved';
-            html += `<td class="gantt-cell ${cls}" onclick="openDetailGantt('${key}')">
-              <span class="gcell-name">${res.name}</span></td>`;
+            html += `<td class="gantt-cell gantt-reserved" onclick="openDetailGantt('${key}')">
+              <span class="gcell-name">${res.name}</span>${moveBtn}</td>`;
           }
         } else {
           if (past) {
@@ -3559,12 +3675,16 @@
 
   enterBlockMode = function(type) {
     blockMode = true; blockModeType = type; selectedSlotKeys.clear();
+    moveMode = false; moveSourceKey = null; moveTargetKey = null;
     document.getElementById('gantt-normal-controls').style.display = 'none';
     document.getElementById('gantt-select-controls').style.display = 'flex';
+    document.getElementById('gantt-move-controls').style.display = 'none';
     var rlN = document.getElementById('rl-gantt-normal-controls');
     var rlS = document.getElementById('rl-gantt-select-controls');
+    var rlM = document.getElementById('rl-gantt-move-controls');
     if (rlN) rlN.style.display = 'none';
     if (rlS) rlS.style.display = 'flex';
+    if (rlM) rlM.style.display = 'none';
     var label = document.getElementById('gantt-select-label');
     label.style.color = type === 'stop' ? 'hsl(0,72%,44%)' : 'hsl(142,55%,32%)';
     var bulkBtn = document.getElementById('btn-bulk-all');
@@ -3581,10 +3701,13 @@
     blockMode = false; blockModeType = null; selectedSlotKeys.clear();
     document.getElementById('gantt-normal-controls').style.display = 'flex';
     document.getElementById('gantt-select-controls').style.display = 'none';
+    document.getElementById('gantt-move-controls').style.display = 'none';
     var rlN = document.getElementById('rl-gantt-normal-controls');
     var rlS = document.getElementById('rl-gantt-select-controls');
+    var rlM = document.getElementById('rl-gantt-move-controls');
     if (rlN) rlN.style.display = 'flex';
     if (rlS) rlS.style.display = 'none';
+    if (rlM) rlM.style.display = 'none';
     activeRenderGantt();
   };
 
