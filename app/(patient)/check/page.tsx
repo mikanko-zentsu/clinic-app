@@ -12,6 +12,7 @@ interface Reservation {
   cardNumber: string;
   date: string;
   startTime: string;
+  doctorId: string | null;
   doctorName: string | null;
   maskedName: string | null;
 }
@@ -67,6 +68,7 @@ export default function CheckPage() {
   };
 
   const handleCancel = async (reservationNumber: string) => {
+    const target = reservations.find((r) => r.reservationNumber === reservationNumber);
     setConfirmTarget(null);
     setCancelling(reservationNumber);
     try {
@@ -76,6 +78,11 @@ export default function CheckPage() {
       if (!res.ok) {
         setError("予約の取消に失敗しました");
         return;
+      }
+      // localStorage から予約済みデータを削除
+      if (target) {
+        const slotKey = `reservation_${target.doctorId ?? "none"}_${target.date}_${target.startTime}`;
+        localStorage.removeItem(slotKey);
       }
       setReservations((prev) => prev.filter((r) => r.reservationNumber !== reservationNumber));
     } catch {

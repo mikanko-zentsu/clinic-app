@@ -110,6 +110,7 @@ function ReserveContent() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [duplicateError, setDuplicateError] = useState(false);
 
   // Fetch slots when reaching time step
   useEffect(() => {
@@ -214,6 +215,18 @@ function ReserveContent() {
   const handleConfirm = async () => {
     setSubmitting(true);
     setError(null);
+
+    // 重複チェック: localStorage に同じ枠の予約が存在するか確認
+    console.log('selectedDate:', selectedDate, 'selectedTime:', selectedTime, 'doctorId:', selectedDoctor?.id);
+    const slotKey = `reservation_${selectedDoctor?.id ?? "none"}_${selectedDate}_${selectedTime}`;
+    console.log('チェックキー:', slotKey, '既存:', localStorage.getItem(slotKey));
+    console.log('localStorage全キー:', Object.keys(localStorage).filter(k => k.startsWith('reservation_')));
+    if (localStorage.getItem(slotKey)) {
+      setDuplicateError(true);
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const res = await fetch("/api/patient/reservations", {
         method: "POST",
@@ -232,6 +245,14 @@ function ReserveContent() {
         setError(data.error ?? "予約の登録に失敗しました");
         return;
       }
+      // localStorage に予約済みデータを保存
+      localStorage.setItem(slotKey, JSON.stringify({
+        reservationNumber: data.reservation.reservationNumber,
+        cardNumber,
+        doctorId: selectedDoctor?.id ?? null,
+      }));
+      console.log('保存したキー:', slotKey);
+      console.log('保存後のlocalStorage確認:', localStorage.getItem(slotKey));
       setReservationNumber(data.reservation.reservationNumber);
       setCountdown(10);
       setStep("complete");
@@ -506,6 +527,24 @@ function ReserveContent() {
             <p className="text-slate-400 text-sm">{countdown}秒後にトップページへ戻ります</p>
             <Button variant="outline" className="mt-4" onClick={() => router.push("/")}>
               今すぐ戻る
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Duplicate Error Popup ── */}
+      {duplicateError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 text-center">
+            <div className="text-4xl mb-4">⚠️</div>
+            <h2 className="text-xl font-bold text-[hsl(222_47%_11%)] mb-3">
+              予約が重複しています
+            </h2>
+            <p className="text-slate-600 text-sm mb-6">
+              この時間はすでに予約が入っています。別の時間をお選びください。
+            </p>
+            <Button size="lg" onClick={() => router.push("/")} className="w-full">
+              最初からやり直す
             </Button>
           </div>
         </div>

@@ -729,7 +729,7 @@
           <!-- ③④ 凡例：キャンセル除去、来院済→グレー -->
           <div class="gantt-legend">
             <span class="legend-item"><span class="legend-dot lv"></span>来院済</span>
-            <span class="legend-item"><span class="legend-dot le"></span>空き枠</span>
+            <span class="legend-item"><span class="legend-dot le"></span>予約可</span>
 
           </div>
 
@@ -833,7 +833,7 @@
             </div>
             <div class="gantt-legend">
               <span class="legend-item"><span class="legend-dot lv"></span>来院済</span>
-              <span class="legend-item"><span class="legend-dot le"></span>空き枠</span>
+              <span class="legend-item"><span class="legend-dot le"></span>予約可</span>
   
             </div>
             <div class="gantt-scroll">
@@ -883,7 +883,7 @@
           </div>
           <div class="stg-cat">
             <div class="stg-cat-label">予約</div>
-            <div class="stg-cat-item" onclick="stgNav(this,'booking')">予約・キャンセル設定</div>
+            <div class="stg-cat-item" onclick="stgNav(this,'booking')">予約・予約取消設定</div>
             <div class="stg-cat-item" onclick="stgNav(this,'notify')">通知設定</div>
           </div>
           <div class="stg-cat">
@@ -1036,9 +1036,16 @@
       <strong>⚠️ キャンセルの確認</strong>
       この予約をキャンセルします。操作は取り消せません。本当によろしいですか？
     </div>
-    <div class="modal-actions">
+    <div class="confirm-view" id="purge-confirm-view">
+      <strong>⚠️ 全て取消の確認</strong>
+      来院済みの記録と予約を完全に取り消します。この操作は元に戻せません。
+    </div>
+    <div class="modal-actions" id="detail-actions-normal">
       <button class="btn btn-success" id="btn-arrival" onclick="handleArrival()">来院</button>
-      <button class="btn btn-danger" id="btn-cancel" onclick="handleCancel()">キャンセルする</button>
+      <button class="btn btn-danger" id="btn-cancel" onclick="handleCancel()">予約取消</button>
+    </div>
+    <div class="modal-actions" id="detail-actions-visited" style="display:none;">
+      <button class="btn btn-danger" id="btn-purge" onclick="handlePurge()">全て取消</button>
     </div>
   </div>
 </div>
@@ -1351,7 +1358,7 @@
         /* サマリーを固定コンパクト高さにし、残りをガント行に配分 */
         var summaryH = 24; /* 文字1行分＋最小padding */
         var available = totalH - fixedH;
-        var rowH = Math.max(Math.floor((available - summaryH - 4) / totalDataRows), 12);
+        var rowH = Math.min(Math.max(Math.floor((available - summaryH - 4) / totalDataRows), 12), 80);
 
         dashPage.querySelectorAll('.gantt-table tbody tr').forEach(function(tr) {
           tr.style.height = rowH + 'px';
@@ -1667,19 +1674,44 @@
 
   /* ⑩ 患者の現在予約一覧を取得 */
   function getPatientReservations(card) {
-    var activeRes = getActiveReservations();
-    return Object.entries(activeRes)
-      .filter(function(entry) {
-        var v = entry[1];
-        return v.card === card && v.status !== 'キャンセル';
-      })
-      .map(function(entry) {
-        var k = entry[0]; var v = entry[1];
+    var results = [];
+    var todayDateStr = todayYear + '年' + todayMonth + '月' + todayDate + '日（' + todayWeekday + '）';
+    var todaySortKey = todayYear * 10000 + todayMonth * 100 + todayDate;
+
+    // 本日の予約（reservations）から収集
+    Object.entries(reservations).forEach(function(entry) {
+      var k = entry[0]; var v = entry[1];
+      if (v.card === card && v.status !== 'キャンセル') {
         var parts = k.split('_'); var docId = parts[0]; var time = parts[1];
         var doc = DOCTORS.find(function(d) { return d.id === docId; }) || { name:'不明', color:'#999' };
-        return { key: k, time: time, doc: doc, status: v.status, bookingId: makeBookingId(k) };
-      })
-      .sort(function(a, b) { return a.time < b.time ? -1 : 1; });
+        results.push({ key: k, time: time, doc: doc, status: v.status, bookingId: makeBookingId(k), dateStr: todayDateStr, source: 'today', sortDate: todaySortKey });
+      }
+    });
+
+    // カレンダー選択日の予約（listDateReservations）から収集（本日と異なる場合のみ）
+    if (rlSelectedDate && Object.keys(listDateReservations).length > 0) {
+      var isSameDate = (rlSelectedDate.year === todayYear && rlSelectedDate.month === todayMonth && rlSelectedDate.day === todayDate);
+      if (!isSameDate) {
+        var dow = ['日','月','火','水','木','金','土'];
+        var ld = new Date(rlSelectedDate.year, rlSelectedDate.month - 1, rlSelectedDate.day);
+        var listDateStr = rlSelectedDate.year + '年' + rlSelectedDate.month + '月' + rlSelectedDate.day + '日（' + dow[ld.getDay()] + '）';
+        var listSortKey = rlSelectedDate.year * 10000 + rlSelectedDate.month * 100 + rlSelectedDate.day;
+        Object.entries(listDateReservations).forEach(function(entry) {
+          var k = entry[0]; var v = entry[1];
+          if (v.card === card && v.status !== 'キャンセル') {
+            var parts = k.split('_'); var docId = parts[0]; var time = parts[1];
+            var doc = DOCTORS.find(function(d) { return d.id === docId; }) || { name:'不明', color:'#999' };
+            results.push({ key: k, time: time, doc: doc, status: v.status, bookingId: makeBookingId(k), dateStr: listDateStr, source: 'list', sortDate: listSortKey });
+          }
+        });
+      }
+    }
+
+    results.sort(function(a, b) {
+      if (a.sortDate !== b.sortDate) return a.sortDate - b.sortDate;
+      return a.time < b.time ? -1 : 1;
+    });
+    return results;
   }
 
   /* ⑩ カルテ画像サムネイル描画 */
@@ -1711,18 +1743,14 @@
       container.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:hsl(214,32%,52%);font-size:13px;">現在の予約はありません</td></tr>';
       return;
     }
-    var dateStr = todayYear + '年' + todayMonth + '月' + todayDate + '日（' + todayWeekday + '）';
-    if (ganttContext === 'list' && rlSelectedDate) {
-      dateStr = rlSelectedDate.year + '年' + rlSelectedDate.month + '月' + rlSelectedDate.day + '日';
-    }
     var html = '';
     resList.forEach(function(r) {
       html += '<tr>'
-            + '<td style="white-space:nowrap;font-weight:bold;">' + dateStr + ' ' + r.time + '</td>'
+            + '<td style="white-space:nowrap;font-weight:bold;">' + r.dateStr + ' ' + r.time + '</td>'
             + '<td><span style="color:#000000;">' + r.doc.name + '</span></td>'
             + '<td style="font-variant-numeric:tabular-nums;">' + r.bookingId + '</td>'
             + '<td>' + makeStatusBadge(r.status) + '</td>'
-            + '<td><button class="btn-cancel-sm" onclick="cancelPatientRes(this,\'' + r.key + '\')">キャンセル</button></td>'
+            + '<td><button class="btn-cancel-sm" onclick="cancelPatientRes(this,\'' + r.key + '\',\'' + r.source + '\')">予約取消</button></td>'
             + '<td></td>'
             + '</tr>';
     });
@@ -1752,14 +1780,10 @@
         }
       });
     }
-    /* 当日分の来院済も追加 */
-    var todayVisits = getPatientReservations(card).filter(function(r) { return r.status === '来院済'; });
-    todayVisits.forEach(function(r) {
-      var ds = todayYear + '年' + todayMonth + '月' + todayDate + '日（' + todayWeekday + '）';
-      if (ganttContext === 'list' && rlSelectedDate) {
-        ds = rlSelectedDate.year + '年' + rlSelectedDate.month + '月' + rlSelectedDate.day + '日';
-      }
-      visits.push({ dateStr: ds, sortKey: todayYear * 10000 + todayMonth * 100 + todayDate, time: r.time, doc: r.doc, bookingId: r.bookingId });
+    /* 当日分・選択日分の来院済も追加 */
+    var activeVisits = getPatientReservations(card).filter(function(r) { return r.status === '来院済'; });
+    activeVisits.forEach(function(r) {
+      visits.push({ dateStr: r.dateStr, sortKey: r.sortDate, time: r.time, doc: r.doc, bookingId: r.bookingId });
     });
     /* 並び順設定に従ってソート */
     var dir = pastVisitOrder === 'desc' ? -1 : 1;
@@ -1939,11 +1963,13 @@
 
   /* ⑩ 患者詳細からキャンセル（モーダル確認） */
   var pdCancelKey = null;
+  var pdCancelSource = null;
 
-  function cancelPatientRes(btn, key) {
+  function cancelPatientRes(btn, key, source) {
     pdCancelKey = key;
-    var activeRes = getActiveReservations();
-    var r = activeRes[key];
+    pdCancelSource = source || 'today';
+    var targetRes = (pdCancelSource === 'list') ? listDateReservations : reservations;
+    var r = targetRes[key];
     if (!r) return;
     var parts = key.split('_');
     var docId = parts[0];
@@ -1951,9 +1977,14 @@
     var doc = DOCTORS.find(function(d) { return d.id === docId; });
     var docName = doc ? doc.name : docId;
     var bookingId = makeBookingId(key);
-    var dateStr = todayYear + '年' + todayMonth + '月' + todayDate + '日（' + todayWeekday + '）';
-    if (ganttContext === 'list' && rlSelectedDate) {
-      dateStr = rlSelectedDate.year + '年' + rlSelectedDate.month + '月' + rlSelectedDate.day + '日';
+    // 日付を source から決定
+    var dateStr;
+    if (pdCancelSource === 'list' && rlSelectedDate) {
+      var dow = ['日','月','火','水','木','金','土'];
+      var ld = new Date(rlSelectedDate.year, rlSelectedDate.month - 1, rlSelectedDate.day);
+      dateStr = rlSelectedDate.year + '年' + rlSelectedDate.month + '月' + rlSelectedDate.day + '日（' + dow[ld.getDay()] + '）';
+    } else {
+      dateStr = todayYear + '年' + todayMonth + '月' + todayDate + '日（' + todayWeekday + '）';
     }
     document.getElementById('pd-cancel-detail').innerHTML =
       '<div><span style="color:#888;font-size:12px;">患者名：</span><strong>' + r.name + '</strong></div>'
@@ -1966,21 +1997,23 @@
   function closePdCancel() {
     document.getElementById('modal-pd-cancel').classList.remove('open');
     pdCancelKey = null;
+    pdCancelSource = null;
   }
 
   function confirmPdCancel() {
     if (!pdCancelKey) return;
-    var activeRes = getActiveReservations();
-    if (!activeRes[pdCancelKey]) return;
-    var name = activeRes[pdCancelKey].name;
-    var card = activeRes[pdCancelKey].card;
-    activeRes[pdCancelKey].status = 'キャンセル';
+    var targetRes = (pdCancelSource === 'list') ? listDateReservations : reservations;
+    if (!targetRes[pdCancelKey]) return;
+    var name = targetRes[pdCancelKey].name;
+    var card = targetRes[pdCancelKey].card;
+    targetRes[pdCancelKey].status = 'キャンセル';
     var pdParts = pdCancelKey.split('_');
     var pdDocId = pdParts[0];
     var pdTimeStr = pdParts[1];
     autoStopIfNeeded(pdDocId, pdTimeStr);
     activeRenderGantt();
     renderPatientReservations(card);
+    renderPastVisits(card);
     closePdCancel();
     showToast(name + 'さんの予約をキャンセルしました', '❌');
   }
@@ -2143,9 +2176,16 @@
     clinicPhone: '06-1234-5678',
     clinicAddress: '大阪府大阪市中央区本町1-2-3',
     clinicEmail: 'info@example.jp',
+    bookingDeadlineEnabled: true,
+    bookingDeadlineDay: '当日',
+    bookingDeadlineType: 'minutes',
+    bookingDeadlineTime: '09:00',
     bookingDeadlineMin: '60',
-    cancelDayBefore: '前日',
-    cancelTime: '18:00',
+    cancelDeadlineEnabled: true,
+    cancelDeadlineDay: '前日',
+    cancelDeadlineType: 'time',
+    cancelDeadlineTime: '18:00',
+    cancelDeadlineMin: '60',
     calendarWeekStart: 'monday',
     notifyEmail: true,
     remindDayBefore: '前日',
@@ -2226,8 +2266,92 @@
     return h;
   }
 
+  /* 締め切り設定：表示テキスト生成 */
+  function stgDeadlineDisplayText(day, type, time, min) {
+    if (type === 'time') return day + ' の ' + time + ' まで';
+    return '診療開始の ' + min + ' 分前まで';
+  }
+
+  /* 締め切り設定：編集行HTML生成 */
+  function stgDeadlineEditRow(label, prefix, enabled, day, type, time, min) {
+    var inputStyle = 'padding:5px 8px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit;outline:none;';
+    var radioStyle = 'cursor:pointer;';
+    var r = '<div class="stg-row"><div class="stg-row-label">' + label + '</div>';
+    r += '<div class="stg-row-value" style="font-size:13px;">';
+    /* あり/なし トグル */
+    r += '<div style="display:flex;gap:12px;margin-bottom:8px;">';
+    r += '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">';
+    r += '<input type="radio" name="stg-' + prefix + '-enabled" value="1"' + (enabled ? ' checked' : '') + ' style="' + radioStyle + '" onchange="stgToggleDeadline(\'' + prefix + '\',true)"> あり</label>';
+    r += '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">';
+    r += '<input type="radio" name="stg-' + prefix + '-enabled" value="0"' + (!enabled ? ' checked' : '') + ' style="' + radioStyle + '" onchange="stgToggleDeadline(\'' + prefix + '\',false)"> なし</label>';
+    r += '</div>';
+    /* 詳細設定（あり選択時のみ表示） */
+    r += '<div id="stg-' + prefix + '-detail" style="' + (enabled ? '' : 'display:none;') + 'padding-left:4px;">';
+    /* 当日/前日 プルダウン */
+    r += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">';
+    r += '<select id="stg-' + prefix + '-day" style="' + inputStyle + '">';
+    r += '<option value="当日"' + (day === '当日' ? ' selected' : '') + '>当日</option>';
+    r += '<option value="前日"' + (day === '前日' ? ' selected' : '') + '>前日</option>';
+    r += '</select>';
+    r += '<span>の</span>';
+    r += '</div>';
+    /* 時刻指定 / 時間前指定 ラジオ */
+    r += '<div style="display:flex;flex-direction:column;gap:8px;">';
+    r += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">';
+    r += '<input type="radio" name="stg-' + prefix + '-type" value="time"' + (type === 'time' ? ' checked' : '') + ' style="' + radioStyle + '" onchange="stgToggleDeadlineType(\'' + prefix + '\',\'time\')">';
+    r += '<span>時刻指定</span>';
+    r += '<span id="stg-' + prefix + '-time-wrap" style="display:' + (type === 'time' ? 'flex' : 'none') + ';align-items:center;gap:4px;">';
+    r += '<input type="text" id="stg-' + prefix + '-time" value="' + time + '" placeholder="18:00" style="width:64px;text-align:center;' + inputStyle + '">';
+    r += '<span>まで</span></span></label>';
+    r += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">';
+    r += '<input type="radio" name="stg-' + prefix + '-type" value="minutes"' + (type === 'minutes' ? ' checked' : '') + ' style="' + radioStyle + '" onchange="stgToggleDeadlineType(\'' + prefix + '\',\'minutes\')">';
+    r += '<span>時間前指定</span>';
+    r += '<span id="stg-' + prefix + '-min-wrap" style="display:' + (type === 'minutes' ? 'flex' : 'none') + ';align-items:center;gap:4px;">';
+    r += '<input type="number" id="stg-' + prefix + '-min" value="' + min + '" style="width:60px;text-align:center;' + inputStyle + '">';
+    r += '<span>分前まで</span></span></label>';
+    r += '</div></div></div></div>';
+    return r;
+  }
+
+  /* あり/なし トグル */
+  function stgToggleDeadline(prefix, enabled) {
+    var detail = document.getElementById('stg-' + prefix + '-detail');
+    if (detail) detail.style.display = enabled ? '' : 'none';
+  }
+
+  /* 時刻指定/時間前指定 切り替え */
+  function stgToggleDeadlineType(prefix, type) {
+    var tw = document.getElementById('stg-' + prefix + '-time-wrap');
+    var mw = document.getElementById('stg-' + prefix + '-min-wrap');
+    if (tw) tw.style.display = (type === 'time') ? 'flex' : 'none';
+    if (mw) mw.style.display = (type === 'minutes') ? 'flex' : 'none';
+  }
+
   function stgSaveCard(id) {
-    if (id === 'sec-ops') {
+    if (id === 'booking') {
+      /* 予約受付の締め切り */
+      var bEnabled = document.querySelector('input[name="stg-booking-enabled"][value="1"]');
+      stgData.bookingDeadlineEnabled = bEnabled ? bEnabled.checked : false;
+      var bDay = document.getElementById('stg-booking-day');
+      if (bDay) stgData.bookingDeadlineDay = bDay.value;
+      var bType = document.querySelector('input[name="stg-booking-type"]:checked');
+      if (bType) stgData.bookingDeadlineType = bType.value;
+      var bTime = document.getElementById('stg-booking-time');
+      if (bTime) stgData.bookingDeadlineTime = bTime.value;
+      var bMin = document.getElementById('stg-booking-min');
+      if (bMin) stgData.bookingDeadlineMin = bMin.value;
+      /* オンラインでの取消期限 */
+      var cEnabled = document.querySelector('input[name="stg-cancel-enabled"][value="1"]');
+      stgData.cancelDeadlineEnabled = cEnabled ? cEnabled.checked : false;
+      var cDay = document.getElementById('stg-cancel-day');
+      if (cDay) stgData.cancelDeadlineDay = cDay.value;
+      var cType = document.querySelector('input[name="stg-cancel-type"]:checked');
+      if (cType) stgData.cancelDeadlineType = cType.value;
+      var cTime = document.getElementById('stg-cancel-time');
+      if (cTime) stgData.cancelDeadlineTime = cTime.value;
+      var cMin = document.getElementById('stg-cancel-min');
+      if (cMin) stgData.cancelDeadlineMin = cMin.value;
+    } else if (id === 'sec-ops') {
       var items = ['editClinic','editDoctor','deletePatient','exportData','accessSettings'];
       items.forEach(function(key) {
         var cb = document.getElementById('stg-sec-' + key);
@@ -2308,32 +2432,16 @@
     },
     'booking': function() {
       var h = '<div style="padding:16px;">';
-      h += '<div class="stg-page-title">予約・キャンセル設定</div>';
+      h += '<div class="stg-page-title">予約・予約取消設定</div>';
       h += stgCard('booking', '予約受付', function(editing) {
         if (editing) {
-          var r = '<div class="stg-row"><div class="stg-row-label">予約受付の締め切り</div>';
-          r += '<div class="stg-row-value" style="display:flex;align-items:center;gap:6px;font-size:13px;">';
-          r += '診療開始の';
-          r += '<input type="number" id="stg-bookingDeadlineMin" value="' + stgData.bookingDeadlineMin + '" style="width:60px;padding:5px 8px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit;text-align:center;outline:none;" onfocus="this.style.borderColor=\'#3b82f6\'" onblur="this.style.borderColor=\'#d1d5db\'">';
-          r += '分前まで';
-          r += '</div></div>';
-          r += '<div class="stg-row"><div class="stg-row-label">キャンセル期限</div>';
-          r += '<div class="stg-row-value" style="display:flex;align-items:center;gap:6px;font-size:13px;flex-wrap:wrap;">';
-          var cancelOpts = ['当日','前日','2日前','3日前'];
-          r += '<select id="stg-cancelDayBefore" style="padding:5px 8px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit;outline:none;" onfocus="this.style.borderColor=\'#3b82f6\'" onblur="this.style.borderColor=\'#d1d5db\'">';
-          cancelOpts.forEach(function(opt) {
-            r += '<option value="' + opt + '"' + (stgData.cancelDayBefore === opt ? ' selected' : '') + '>' + opt + '</option>';
-          });
-          r += '</select>';
-          r += 'の';
-          r += '<input type="text" id="stg-cancelTime" value="' + stgData.cancelTime + '" placeholder="18:00" style="width:64px;padding:5px 8px;border:1.5px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit;text-align:center;outline:none;" onfocus="this.style.borderColor=\'#3b82f6\'" onblur="this.style.borderColor=\'#d1d5db\'">';
-          r += 'まで';
-          r += '<span style="color:#9ca3af;font-size:11px;margin-left:4px;">（以降は電話でのキャンセル）</span>';
-          r += '</div></div>';
-          return r;
+          return stgDeadlineEditRow('予約受付の締め切り', 'booking', stgData.bookingDeadlineEnabled, stgData.bookingDeadlineDay, stgData.bookingDeadlineType, stgData.bookingDeadlineTime, stgData.bookingDeadlineMin)
+               + stgDeadlineEditRow('オンラインでの取消期限', 'cancel', stgData.cancelDeadlineEnabled, stgData.cancelDeadlineDay, stgData.cancelDeadlineType, stgData.cancelDeadlineTime, stgData.cancelDeadlineMin);
         }
-        return stgRow('予約受付の締め切り', '診療開始の ' + stgData.bookingDeadlineMin + ' 分前まで')
-          + stgRow('キャンセル期限', stgData.cancelDayBefore + ' の ' + stgData.cancelTime + ' まで（以降は電話でのキャンセル）');
+        var bookingDisplay = stgData.bookingDeadlineEnabled ? stgDeadlineDisplayText(stgData.bookingDeadlineDay, stgData.bookingDeadlineType, stgData.bookingDeadlineTime, stgData.bookingDeadlineMin) : 'なし（制限なく予約可能）';
+        var cancelDisplay = stgData.cancelDeadlineEnabled ? stgDeadlineDisplayText(stgData.cancelDeadlineDay, stgData.cancelDeadlineType, stgData.cancelDeadlineTime, stgData.cancelDeadlineMin) + '（以降は電話での取消）' : 'なし（制限なく取消可能）';
+        return stgRow('予約受付の締め切り', bookingDisplay)
+             + stgRow('オンラインでの取消期限', cancelDisplay);
       });
       h += '</div>';
       return h;
@@ -2478,22 +2586,31 @@
     document.getElementById('d-doctor').innerHTML = `<span style="font-weight:700;color:#000000;">${doc.name}</span>`;
     document.getElementById('d-status').innerHTML = makeStatusBadge(res.status);
 
-    /* ⑦-1 来院ボタン状態 */
-    const btnArrival = document.getElementById('btn-arrival');
-    btnArrival.disabled = false;
+    /* ⑦-1 ステータスに応じてボタン切替 */
+    cancelStep = 0;
+    purgeStep = 0;
+    document.getElementById('cancel-confirm-view').classList.remove('show');
+    document.getElementById('purge-confirm-view').classList.remove('show');
+
     if (res.status === '来院済') {
-      btnArrival.textContent = '来院取消';
-      btnArrival.className = 'btn btn-danger';
+      document.getElementById('detail-actions-normal').style.display = 'none';
+      document.getElementById('detail-actions-visited').style.display = '';
+      const btnPurge = document.getElementById('btn-purge');
+      btnPurge.textContent = '全て取消';
+      btnPurge.style.background = '';
     } else {
+      document.getElementById('detail-actions-normal').style.display = '';
+      document.getElementById('detail-actions-visited').style.display = 'none';
+      const btnArrival = document.getElementById('btn-arrival');
+      btnArrival.disabled = false;
       btnArrival.textContent = '来院';
       btnArrival.className = 'btn btn-success';
+      const btnCancel = document.getElementById('btn-cancel');
+      btnCancel.textContent = '予約取消';
+      btnCancel.style.background = '';
+      console.log('ボタンテキスト設定:', btnCancel.textContent);
     }
 
-    cancelStep = 0;
-    const btn = document.getElementById('btn-cancel');
-    btn.textContent = 'キャンセルする';
-    btn.style.background = '';
-    document.getElementById('cancel-confirm-view').classList.remove('show');
     document.getElementById('modal-detail').classList.add('open');
   }
 
@@ -2519,29 +2636,62 @@
 
   function closeDetail() {
     document.getElementById('modal-detail').classList.remove('open');
-    currentGanttKey = null; cancelStep = 0;
+    currentGanttKey = null; cancelStep = 0; purgeStep = 0;
   }
 
   function handleCancel() {
     if (cancelStep === 0) {
       document.getElementById('cancel-confirm-view').classList.add('show');
       const btn = document.getElementById('btn-cancel');
-      btn.textContent = '本当にキャンセルする';
+      btn.textContent = '本当に取り消す';
       btn.style.background = 'hsl(0,72%,38%)';
       cancelStep = 1;
     } else {
       if (!currentGanttKey) return;
       const name = reservations[currentGanttKey].name;
       reservations[currentGanttKey].status = 'キャンセル'; /* ④ → appears as empty */
-      // キー例: 'tanaka_09:00' → docId='tanaka', time='09:00'
       var parts = currentGanttKey.split('_');
       var docId = parts[0];
       var timeStr = parts[1];
       listDateReservations[currentGanttKey] = { status: 'キャンセル' };
       autoStopIfNeeded(docId, timeStr);
       closeDetail();
-      renderGantt();
+      activeRenderGantt();
       showToast(`${name}さんの予約をキャンセルしました`, '❌');
+    }
+  }
+
+  let purgeStep = 0;
+
+  function handlePurge() {
+    if (purgeStep === 0) {
+      document.getElementById('purge-confirm-view').classList.add('show');
+      const btn = document.getElementById('btn-purge');
+      btn.textContent = '全て取消';
+      btn.style.background = 'hsl(0,72%,38%)';
+      purgeStep = 1;
+    } else {
+      if (!currentGanttKey) return;
+      const res = getActiveReservations()[currentGanttKey];
+      if (!res) return;
+      const name = res.name;
+      const card = res.card;
+      var parts = currentGanttKey.split('_');
+      var docId = parts[0];
+      var timeStr = parts[1];
+      /* ガントチャート・予約データから完全削除 */
+      delete reservations[currentGanttKey];
+      delete listDateReservations[currentGanttKey];
+      autoStopIfNeeded(docId, timeStr);
+      closeDetail();
+      activeRenderGantt();
+      /* 患者情報画面が開いていれば再描画 */
+      if (card && document.getElementById('modal-patient-detail') &&
+          document.getElementById('modal-patient-detail').classList.contains('open')) {
+        renderPatientReservations(card);
+        renderPastVisits(card);
+      }
+      showToast(`${name}さんの来院記録と予約を取り消しました`, '❌');
     }
   }
 
@@ -3312,14 +3462,31 @@
     document.getElementById('d-time').textContent = getContextDateStr() + ' ' + time;
     document.getElementById('d-doctor').innerHTML = '<span style="font-weight:700;color:#000000;">' + doc.name + '</span>';
     document.getElementById('d-status').innerHTML = makeStatusBadge(res.status);
-    var btnArrival = document.getElementById('btn-arrival');
-    btnArrival.disabled = false;
-    if (res.status === '来院済') { btnArrival.textContent = '来院取消'; btnArrival.className = 'btn btn-danger'; }
-    else { btnArrival.textContent = '来院'; btnArrival.className = 'btn btn-success'; }
+
     cancelStep = 0;
-    var btn = document.getElementById('btn-cancel');
-    btn.textContent = 'キャンセルする'; btn.style.background = '';
+    purgeStep = 0;
     document.getElementById('cancel-confirm-view').classList.remove('show');
+    document.getElementById('purge-confirm-view').classList.remove('show');
+
+    if (res.status === '来院済') {
+      document.getElementById('detail-actions-normal').style.display = 'none';
+      document.getElementById('detail-actions-visited').style.display = '';
+      var btnPurge = document.getElementById('btn-purge');
+      btnPurge.textContent = '全て取消';
+      btnPurge.style.background = '';
+    } else {
+      document.getElementById('detail-actions-normal').style.display = '';
+      document.getElementById('detail-actions-visited').style.display = 'none';
+      var btnArrival = document.getElementById('btn-arrival');
+      btnArrival.disabled = false;
+      btnArrival.textContent = '来院';
+      btnArrival.className = 'btn btn-success';
+      var btnCancel = document.getElementById('btn-cancel');
+      btnCancel.textContent = '予約取消';
+      btnCancel.style.background = '';
+      console.log('ボタンテキスト設定:', btnCancel.textContent);
+    }
+
     document.getElementById('modal-detail').classList.add('open');
   };
 
@@ -3342,17 +3509,51 @@
     if (cancelStep === 0) {
       document.getElementById('cancel-confirm-view').classList.add('show');
       var btn = document.getElementById('btn-cancel');
-      btn.textContent = '本当にキャンセルする'; btn.style.background = 'hsl(0,72%,38%)';
+      btn.textContent = '本当に取り消す'; btn.style.background = 'hsl(0,72%,38%)';
       cancelStep = 1;
     } else {
       if (!currentGanttKey) return;
       var activeRes = getActiveReservations();
       var name = activeRes[currentGanttKey].name;
+      var card = activeRes[currentGanttKey].card;
       activeRes[currentGanttKey].status = 'キャンセル';
       var _parts = currentGanttKey.split('_');
       autoStopIfNeeded(_parts[0], _parts[1]);
       closeDetail(); activeRenderGantt();
+      if (card && document.getElementById('modal-patient-detail') &&
+          document.getElementById('modal-patient-detail').classList.contains('open')) {
+        renderPatientReservations(card);
+        renderPastVisits(card);
+      }
       showToast(name + 'さんの予約をキャンセルしました', '❌');
+    }
+  };
+
+  handlePurge = function() {
+    if (purgeStep === 0) {
+      document.getElementById('purge-confirm-view').classList.add('show');
+      var btn = document.getElementById('btn-purge');
+      btn.textContent = '全て取消';
+      btn.style.background = 'hsl(0,72%,38%)';
+      purgeStep = 1;
+    } else {
+      if (!currentGanttKey) return;
+      var activeRes = getActiveReservations();
+      var res = activeRes[currentGanttKey];
+      if (!res) return;
+      var name = res.name;
+      var card = res.card;
+      var _parts = currentGanttKey.split('_');
+      delete reservations[currentGanttKey];
+      delete listDateReservations[currentGanttKey];
+      autoStopIfNeeded(_parts[0], _parts[1]);
+      closeDetail(); activeRenderGantt();
+      if (card && document.getElementById('modal-patient-detail') &&
+          document.getElementById('modal-patient-detail').classList.contains('open')) {
+        renderPatientReservations(card);
+        renderPastVisits(card);
+      }
+      showToast(name + 'さんの来院記録と予約を取り消しました', '❌');
     }
   };
 
@@ -3828,21 +4029,26 @@
   function editClinicSettings() {
     var btn = document.getElementById('cs-edit-btn');
     if (csEditing) {
-      clinicSettings.treatmentMin = parseInt(document.getElementById('cs-treat-min').value) || 20;
-      clinicSettings.amStart = { h: parseInt(document.getElementById('cs-am-sh').value) || 9, m: parseInt(document.getElementById('cs-am-sm').value) || 0 };
-      clinicSettings.amEnd   = { h: parseInt(document.getElementById('cs-am-eh').value) || 13, m: parseInt(document.getElementById('cs-am-em').value) || 0 };
-      clinicSettings.pmStart = { h: parseInt(document.getElementById('cs-pm-sh').value) || 16, m: parseInt(document.getElementById('cs-pm-sm').value) || 0 };
-      clinicSettings.pmEnd   = { h: parseInt(document.getElementById('cs-pm-eh').value) || 20, m: parseInt(document.getElementById('cs-pm-em').value) || 0 };
-      csEditing = false;
-      btn.textContent = '編集';
-      btn.className = 'doc-btn-sm doc-btn-edit';
+      showEffectiveModal(function(dateStr) {
+        clinicSettings.treatmentMin = parseInt(document.getElementById('cs-treat-min').value) || 20;
+        clinicSettings.amStart = { h: parseInt(document.getElementById('cs-am-sh').value) || 9, m: parseInt(document.getElementById('cs-am-sm').value) || 0 };
+        clinicSettings.amEnd   = { h: parseInt(document.getElementById('cs-am-eh').value) || 13, m: parseInt(document.getElementById('cs-am-em').value) || 0 };
+        clinicSettings.pmStart = { h: parseInt(document.getElementById('cs-pm-sh').value) || 16, m: parseInt(document.getElementById('cs-pm-sm').value) || 0 };
+        clinicSettings.pmEnd   = { h: parseInt(document.getElementById('cs-pm-eh').value) || 20, m: parseInt(document.getElementById('cs-pm-em').value) || 0 };
+        csEditing = false;
+        btn.textContent = '編集';
+        btn.className = 'doc-btn-sm doc-btn-edit';
+        renderClinicSettings();
+        renderDocCards();
+        showToast('診療カレンダーの変更を保存しました');
+      }, '診療カレンダーの変更の<br>反映開始日を選択してください');
     } else {
       csEditing = true;
       btn.textContent = '保存';
       btn.className = 'doc-btn-sm doc-btn-save';
+      renderClinicSettings();
+      renderDocCards();
     }
-    renderClinicSettings();
-    renderDocCards();
   }
 
   function toggleWorkDay(d) {
@@ -4409,7 +4615,7 @@
     html += '<div class="warn-modal-box">';
     html += '<div class="warn-modal-text">' + message + '</div>';
     html += '<div class="warn-modal-actions">';
-    html += '<button class="warn-modal-cancel" onclick="closeWarnModal()">キャンセル</button>';
+    html += '<button class="warn-modal-cancel" onclick="closeWarnModal()">閉じる</button>';
     html += '<button class="warn-modal-confirm" id="warn-modal-confirm-btn">休診にする</button>';
     html += '</div></div></div>';
     el.innerHTML = html;
@@ -4488,9 +4694,14 @@
     else { inp.type = 'password'; btn.textContent = '👁'; }
   }
 
-  // モーダル外クリックで閉じる
-  document.getElementById('authModal').addEventListener('click', function(e) {
-    if (e.target === this) authCancel();
+  // モーダル外クリックで閉じる（DOM生成後に実行）
+  document.addEventListener('DOMContentLoaded', function() {
+    var authModal = document.getElementById('authModal');
+    if (authModal) {
+      authModal.addEventListener('click', function(e) {
+        if (e.target === this) authCancel();
+      });
+    }
   });
 
   // チェック状態を見てからパスを挟む共通関数
@@ -4508,9 +4719,12 @@
 var effectiveCallback = null;
 var effectiveSelectedType = null;
 
-function showEffectiveModal(callback) {
+function showEffectiveModal(callback, subtitle) {
   effectiveCallback = callback;
   effectiveSelectedType = null;
+
+  // サブタイトル更新
+  document.getElementById('effSubtitle').innerHTML = subtitle || '担当医のスケジュール変更の<br>反映開始日を選択してください';
 
   // 選択状態リセット
   document.querySelectorAll('.eff-btn').forEach(b => {
@@ -4614,7 +4828,7 @@ if (_effModal) {
     </div>
     <div id="authError" style="font-size:11px;color:#EF4444;margin-bottom:14px;padding-left:2px;min-height:16px;"></div>
     <div style="display:flex;gap:8px;">
-      <button onclick="authCancel()" style="flex:1;padding:10px;border:1.5px solid #ddd;border-radius:6px;background:#fff;color:#555;font-size:13px;cursor:pointer;font-family:inherit;">キャンセル</button>
+      <button onclick="authCancel()" style="flex:1;padding:10px;border:1.5px solid #ddd;border-radius:6px;background:#fff;color:#555;font-size:13px;cursor:pointer;font-family:inherit;">閉じる</button>
       <button onclick="authSubmit()" style="flex:1;padding:10px;border:none;border-radius:6px;background:#3B82F6;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">確認</button>
     </div>
   </div>
@@ -4623,7 +4837,7 @@ if (_effModal) {
 <div id="effectiveModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center;">
   <div style="background:#fff; border-radius:8px; padding:24px; width:320px; box-shadow:0 4px 20px rgba(0,0,0,0.15);">
     <h3 style="font-size:15px; font-weight:600; color:#1a1a1a; margin-bottom:4px;">いつから反映しますか？</h3>
-    <p style="font-size:12px; color:#888; margin-bottom:20px; line-height:1.6;">担当医のスケジュール変更の<br>反映開始日を選択してください</p>
+    <p id="effSubtitle" style="font-size:12px; color:#888; margin-bottom:20px; line-height:1.6;">担当医のスケジュール変更の<br>反映開始日を選択してください</p>
     <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
       <button onclick="effectiveSelect(this,'today')" class="eff-btn" style="display:flex; align-items:center; padding:11px 14px; border:1.5px solid #E2E8F0; border-radius:8px; background:#fff; cursor:pointer; font-family:inherit; text-align:left; width:100%;">
         <div><div style="font-size:13px; font-weight:600; color:#1a1a1a;">本日</div><div id="effTodayHint" style="font-size:11px; color:#888; margin-top:2px;"></div></div>      </button>
@@ -4642,7 +4856,7 @@ if (_effModal) {
       以降に予約がありますが、予約はそのままでよろしいですか？
     </div>
     <div style="display:flex; gap:8px;">
-      <button onclick="effectiveCancel()" style="flex:1; padding:10px; border:1.5px solid #ddd; border-radius:6px; background:#fff; color:#555; font-size:13px; cursor:pointer; font-family:inherit;">キャンセル</button>
+      <button onclick="effectiveCancel()" style="flex:1; padding:10px; border:1.5px solid #ddd; border-radius:6px; background:#fff; color:#555; font-size:13px; cursor:pointer; font-family:inherit;">閉じる</button>
       <button id="effOkBtn" onclick="effectiveSubmit()" disabled style="flex:1; padding:10px; border:none; border-radius:6px; background:#3B82F6; color:#fff; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; opacity:0.5;">反映する</button>
     </div>
   </div>
