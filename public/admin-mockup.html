@@ -229,16 +229,16 @@
     .gantt-slot-selected { background: hsl(199,89%,82%) !important; border: 2px solid hsl(199,89%,45%) !important; }
     .gantt-slot-selected .gcell-add,
     .gantt-slot-selected .gcell-blocked { color: hsl(199,89%,28%); font-weight: 900; font-size: 16px; }
-    /* 移動モード */
-    .gantt-move-source { background: var(--primary) !important; border: none !important; }
-    .gantt-move-source .gcell-name { color: #fff !important; }
-    .gantt-move-target { background: hsl(199,89%,82%) !important; border: 2px solid hsl(199,89%,45%) !important; }
-    .gantt-move-dim { background: hsl(214,32%,93%) !important; opacity: 0.4; pointer-events: none !important; cursor: default !important; }
-    .gantt-move-candidate { cursor: pointer !important; pointer-events: auto !important; border: 1.5px dashed hsl(199,89%,55%); }
-    .gantt-move-candidate:hover { background: hsl(210,40%,95%) !important; border-color: hsl(199,89%,45%); }
-    .gcell-move-btn { display: none; position: absolute; top: 1px; right: 1px; background: var(--primary); color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 700; padding: 5px 10px; cursor: pointer; z-index: 1; font-family: inherit; line-height: 1.4; }
-    .gantt-reserved:hover .gcell-move-btn,
-    .gantt-unprocessed:hover .gcell-move-btn { display: block; }
+    /* 移動モード（ドラッグ方式） */
+    .gantt-move-draggable { cursor: grab !important; border: 2px dashed var(--primary) !important; }
+    .gantt-move-draggable:active { cursor: grabbing !important; }
+    .gantt-move-drop-target { border: 2px dashed hsl(199,89%,48%) !important; background: hsl(199,89%,95%) !important; }
+    .gantt-move-drop-hover { background: hsl(199,89%,85%) !important; border: 2px solid hsl(199,89%,48%) !important; }
+    .gantt-move-dim { opacity: 0.5; pointer-events: none !important; cursor: default !important; }
+    .drag-ghost { position: fixed; pointer-events: none; z-index: 9999; background: var(--primary); color: #fff; font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); white-space: nowrap; }
+    .btn-move-enter { background: hsl(199,89%,93%); color: hsl(199,89%,35%); border-color: hsl(199,89%,70%); }
+    .btn-move-enter:not(:disabled):hover { background: hsl(199,89%,48%); color: #fff; border-color: hsl(199,89%,48%); }
+    .btn-move-active { background: #f59e0b !important; color: #fff !important; border-color: #f59e0b !important; }
 
     /* ⑤ Doctor name column — sticky, with tint bg set inline */
     .gantt-doc-td {
@@ -711,6 +711,7 @@
               <h2 class="gantt-date-h2"><span class="gantt-date-text" id="dash-gantt-date"></span></h2>
               <!-- 通常モード -->
               <div id="gantt-normal-controls" style="display:flex;align-items:center;gap:6px;">
+                <button class="btn-slot-control btn-move-enter" id="btn-enter-move" onclick="enterDragMoveMode()">予約枠を移動する</button>
                 <button class="btn-slot-control btn-slot-stop"    onclick="enterBlockMode('stop')">予約枠停止</button>
                 <button class="btn-slot-control btn-slot-unblock" onclick="enterBlockMode('unblock')">予約枠停止解除</button>
               </div>
@@ -723,9 +724,9 @@
               </div>
               <!-- 移動モード -->
               <div id="gantt-move-controls" style="display:none;align-items:center;gap:8px;">
-                <span id="gantt-move-label" style="font-size:12px;font-weight:700;color:var(--primary);">移動モード：移動先を選択</span>
-                <button class="btn-slot-control" id="btn-execute-move" style="background:var(--primary);color:#fff;border-color:var(--primary);" onclick="executeMoveMode()" disabled>移動を確定する</button>
-                <button class="btn-slot-control" style="background:hsl(214,32%,96%);color:hsl(214,32%,44%);border-color:hsl(214,32%,78%);" onclick="cancelMoveMode()">キャンセル</button>
+                <button class="btn-slot-control btn-move-active" id="btn-move-active">移動モード中</button>
+                <span id="gantt-move-label" style="font-size:12px;font-weight:700;color:#f59e0b;">移動したい予約枠をドラッグしてください</span>
+                <button class="btn-slot-control" style="background:hsl(214,32%,96%);color:hsl(214,32%,44%);border-color:hsl(214,32%,78%);" onclick="cancelDragMoveMode()">閉じる</button>
               </div>
             </div>
           </div>
@@ -824,6 +825,7 @@
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                 <h2 class="gantt-date-h2"><span class="gantt-date-text" id="rl-gantt-date">—</span></h2>
                 <div id="rl-gantt-normal-controls" style="display:flex;align-items:center;gap:6px;">
+                  <button class="btn-slot-control btn-move-enter" id="rl-btn-enter-move" onclick="enterDragMoveMode()">予約枠を移動する</button>
                   <button class="btn-slot-control btn-slot-stop" onclick="enterBlockMode('stop')">予約枠停止</button>
                   <button class="btn-slot-control btn-slot-unblock" onclick="enterBlockMode('unblock')">予約枠停止解除</button>
                 </div>
@@ -835,9 +837,9 @@
                 </div>
                 <!-- 移動モード -->
                 <div id="rl-gantt-move-controls" style="display:none;align-items:center;gap:8px;">
-                  <span id="rl-gantt-move-label" style="font-size:12px;font-weight:700;color:var(--primary);">移動モード：移動先を選択</span>
-                  <button class="btn-slot-control" id="rl-btn-execute-move" style="background:var(--primary);color:#fff;border-color:var(--primary);" onclick="executeMoveMode()" disabled>移動を確定する</button>
-                  <button class="btn-slot-control" style="background:hsl(214,32%,96%);color:hsl(214,32%,44%);border-color:hsl(214,32%,78%);" onclick="cancelMoveMode()">キャンセル</button>
+                  <button class="btn-slot-control btn-move-active" id="rl-btn-move-active">移動モード中</button>
+                  <span id="rl-gantt-move-label" style="font-size:12px;font-weight:700;color:#f59e0b;">移動したい予約枠をドラッグしてください</span>
+                  <button class="btn-slot-control" style="background:hsl(214,32%,96%);color:hsl(214,32%,44%);border-color:hsl(214,32%,78%);" onclick="cancelDragMoveMode()">閉じる</button>
                 </div>
               </div>
             </div>
@@ -1166,6 +1168,24 @@
 
 <div class="toast" id="toast"><span id="toast-icon">✅</span><span id="toast-msg"></span></div>
 
+<!-- ════════ MODAL: 移動確認 ════════ -->
+<div class="modal-overlay" id="modal-move-confirm" onclick="overlayClick(event,'modal-move-confirm')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div><div class="modal-title">予約枠の移動</div></div>
+      <button class="modal-close" onclick="closeMoveConfirm()">×</button>
+    </div>
+    <div style="padding:18px 22px;font-size:14px;line-height:1.8;" id="move-confirm-msg"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeMoveConfirm()">閉じる</button>
+      <button class="btn btn-primary" onclick="executeDragMove()">移動する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ドラッグゴースト -->
+<div class="drag-ghost" id="drag-ghost" style="display:none;"></div>
+
 <script>
   /* ════ Today ════ */
   const TODAY = new Date();
@@ -1197,22 +1217,22 @@
   const ALL_SLOTS = [...MORNING, ...AFTERNOON];
 
   const reservations = {
-    'tanaka_09:00': { name: '山田 太郎',  card: '00001', status: '来院済' },
-    'tanaka_09:20': { name: '佐々木 健太', card: '11111', status: '予約済' },
-    'suzuki_09:20': { name: '鈴木 花子',  card: '00002', status: '来院済' },
-    'suzuki_10:00': { name: '橋本 涼子',  card: '22222', status: '予約済' },
-    'sato_09:40':   { name: '高橋 一郎',  card: '10234', status: '来院済' },
-    'tanaka_10:00': { name: '伊藤 美咲',  card: '20018', status: '来院済' },
-    'suzuki_10:20': { name: '渡辺 健二',  card: '30451', status: 'キャンセル' },
-    'tanaka_10:40': { name: '小林 恵子',  card: '10567', status: '来院済' },
-    'sato_11:00':   { name: '加藤 直樹',  card: '41207', status: '来院済' },
-    'suzuki_11:40': { name: '中村さやか', card: '20345', status: '来院済' },
-    'tanaka_12:20': { name: '松本 浩二',  card: '55023', status: '来院済' },
-    'suzuki_16:00': { name: '井上 大輔',  card: '62891', status: '来院済' },
-    'tanaka_16:20': { name: '木村 優子',  card: '30789', status: '来院済' },
-    'sato_16:40':   { name: '清水 哲也',  card: '71344', status: 'キャンセル' },
-    'tanaka_17:20': { name: '山口 洋子',  card: '83006', status: '来院済' },
-    'suzuki_18:00': { name: '藤田 義雄',  card: '94512', status: '来院済' },
+    'tanaka_09:00': { name: '山田 太郎',  card: '00001', status: '来院済', doctorPreferred: true, doctorHistory: [] },
+    'tanaka_09:20': { name: '佐々木 健太', card: '11111', status: '予約済', doctorPreferred: false, doctorHistory: [] },
+    'suzuki_09:20': { name: '鈴木 花子',  card: '00002', status: '来院済', doctorPreferred: true, doctorHistory: [] },
+    'suzuki_10:00': { name: '橋本 涼子',  card: '22222', status: '予約済', doctorPreferred: false, doctorHistory: [] },
+    'sato_09:40':   { name: '高橋 一郎',  card: '10234', status: '来院済', doctorPreferred: true, doctorHistory: [] },
+    'tanaka_10:00': { name: '伊藤 美咲',  card: '20018', status: '来院済', doctorPreferred: false, doctorHistory: [] },
+    'suzuki_10:20': { name: '渡辺 健二',  card: '30451', status: 'キャンセル', doctorPreferred: true, doctorHistory: [] },
+    'tanaka_10:40': { name: '小林 恵子',  card: '10567', status: '来院済', doctorPreferred: true, doctorHistory: [] },
+    'sato_11:00':   { name: '加藤 直樹',  card: '41207', status: '来院済', doctorPreferred: false, doctorHistory: [] },
+    'suzuki_11:40': { name: '中村さやか', card: '20345', status: '来院済', doctorPreferred: true, doctorHistory: [] },
+    'tanaka_12:20': { name: '松本 浩二',  card: '55023', status: '来院済', doctorPreferred: false, doctorHistory: [] },
+    'suzuki_16:00': { name: '井上 大輔',  card: '62891', status: '来院済', doctorPreferred: true, doctorHistory: [] },
+    'tanaka_16:20': { name: '木村 優子',  card: '30789', status: '来院済', doctorPreferred: false, doctorHistory: [] },
+    'sato_16:40':   { name: '清水 哲也',  card: '71344', status: 'キャンセル', doctorPreferred: true, doctorHistory: [] },
+    'tanaka_17:20': { name: '山口 洋子',  card: '83006', status: '来院済', doctorPreferred: true, doctorHistory: [] },
+    'suzuki_18:00': { name: '藤田 義雄',  card: '94512', status: '来院済', doctorPreferred: false, doctorHistory: [] },
   };
   /* 現在時刻より後の予約は「予約済」に戻す */
   (function() {
@@ -1231,15 +1251,17 @@
   let blockModeType = null;
   const selectedSlotKeys = new Set();
 
-  /* 移動モード */
+  /* 移動モード（ドラッグ方式） */
   var moveMode = false;
-  var moveSourceKey = null;
-  var moveTargetKey = null;
+  var dragSourceKey = null;
+  var dragTargetKey = null;
+  var dragGhostEl = null;
+  var isDragging = false;
 
-  function enterMoveMode(key) {
+  function enterDragMoveMode() {
     moveMode = true;
-    moveSourceKey = key;
-    moveTargetKey = null;
+    dragSourceKey = null;
+    dragTargetKey = null;
     document.getElementById('gantt-normal-controls').style.display = 'none';
     document.getElementById('gantt-select-controls').style.display = 'none';
     document.getElementById('gantt-move-controls').style.display = 'flex';
@@ -1249,49 +1271,16 @@
     if (rlN) rlN.style.display = 'none';
     if (rlS) rlS.style.display = 'none';
     if (rlM) rlM.style.display = 'flex';
-    updateMoveControls();
     activeRenderGantt();
   }
 
-  function selectMoveTarget(key) {
-    moveTargetKey = (moveTargetKey === key) ? null : key;
-    updateMoveControls();
-    activeRenderGantt();
-  }
-
-  function updateMoveControls() {
-    var btn = document.getElementById('btn-execute-move');
-    var rlBtn = document.getElementById('rl-btn-execute-move');
-    var enabled = moveTargetKey !== null;
-    if (btn) { btn.disabled = !enabled; btn.style.opacity = enabled ? '1' : '0.5'; }
-    if (rlBtn) { rlBtn.disabled = !enabled; rlBtn.style.opacity = enabled ? '1' : '0.5'; }
-    var label = document.getElementById('gantt-move-label');
-    var rlLabel = document.getElementById('rl-gantt-move-label');
-    var text = moveTargetKey ? '移動先が選択されました' : '移動モード：移動先を選択';
-    if (label) label.textContent = text;
-    if (rlLabel) rlLabel.textContent = text;
-  }
-
-  function executeMoveMode() {
-    if (!moveSourceKey || !moveTargetKey) return;
-    var activeRes = getActiveReservations();
-    var src = activeRes[moveSourceKey];
-    if (!src) { cancelMoveMode(); return; }
-    var name = src.name;
-    var targetParts = moveTargetKey.split('_');
-    var targetDoc = DOCTORS.find(function(d) { return d.id === targetParts[0]; });
-    var targetDocName = targetDoc ? targetDoc.name.split(' ')[0] : targetParts[0];
-    var targetTime = targetParts[1];
-    activeRes[moveTargetKey] = { name: src.name, card: src.card, status: src.status };
-    delete activeRes[moveSourceKey];
-    cancelMoveMode();
-    showToast(name + 'さんの予約を ' + targetDocName + ' ' + targetTime + ' に移動しました');
-  }
-
-  function cancelMoveMode() {
+  function cancelDragMoveMode() {
     moveMode = false;
-    moveSourceKey = null;
-    moveTargetKey = null;
+    dragSourceKey = null;
+    dragTargetKey = null;
+    isDragging = false;
+    var ghost = document.getElementById('drag-ghost');
+    if (ghost) ghost.style.display = 'none';
     document.getElementById('gantt-normal-controls').style.display = 'flex';
     document.getElementById('gantt-select-controls').style.display = 'none';
     document.getElementById('gantt-move-controls').style.display = 'none';
@@ -1302,6 +1291,131 @@
     if (rlS) rlS.style.display = 'none';
     if (rlM) rlM.style.display = 'none';
     activeRenderGantt();
+  }
+
+  function onDragMoveStart(e, key) {
+    e.preventDefault();
+    isDragging = true;
+    dragSourceKey = key;
+    var activeRes = getActiveReservations();
+    var src = activeRes[key];
+    var ghost = document.getElementById('drag-ghost');
+    ghost.textContent = src ? src.name : '';
+    ghost.style.display = 'block';
+    ghost.style.left = (e.clientX + 12) + 'px';
+    ghost.style.top = (e.clientY + 12) + 'px';
+
+    function onMove(ev) {
+      ghost.style.left = (ev.clientX + 12) + 'px';
+      ghost.style.top = (ev.clientY + 12) + 'px';
+      // hover highlight
+      var el = document.elementFromPoint(ev.clientX, ev.clientY);
+      document.querySelectorAll('.gantt-move-drop-hover').forEach(function(d) { d.classList.remove('gantt-move-drop-hover'); });
+      if (el) {
+        var td = el.closest ? el.closest('td[data-drop-key]') : null;
+        if (td) td.classList.add('gantt-move-drop-hover');
+      }
+    }
+
+    function onUp(ev) {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      ghost.style.display = 'none';
+      isDragging = false;
+      document.querySelectorAll('.gantt-move-drop-hover').forEach(function(d) { d.classList.remove('gantt-move-drop-hover'); });
+      var el = document.elementFromPoint(ev.clientX, ev.clientY);
+      if (el) {
+        var td = el.closest ? el.closest('td[data-drop-key]') : null;
+        if (td) {
+          dragTargetKey = td.getAttribute('data-drop-key');
+          showMoveConfirm();
+          return;
+        }
+      }
+      dragSourceKey = null;
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  /* 担当医名をIDから取得するヘルパー */
+  function getDocNameById(id) {
+    var doc = DOCTORS.find(function(d) { return d.id === id; });
+    return doc ? doc.name : id;
+  }
+
+  /* 詳細ポップアップ用：担当医履歴の完全表示 */
+  function buildDoctorDetailLabel(res, currentDocId) {
+    if (!res.doctorPreferred) return '希望なし';
+    var history = res.doctorHistory || [];
+    if (history.length === 0) {
+      return getDocNameById(currentDocId) + ' 希望';
+    }
+    /* 最初の担当医（= 予約元の枠のdocId）を特定: key構造から取得できないので履歴の最初の要素の「前」 */
+    /* 履歴は移動先のIDを順番に格納。最初の希望医は現在のkeyのdocIdでもなく履歴にもないので、
+       元の予約枠のdocIdを保持する必要がある。originalDocIdフィールドを使う */
+    var label = getDocNameById(res.originalDocId || currentDocId) + ' 希望';
+    history.forEach(function(hId) {
+      label += ' → ' + getDocNameById(hId) + ' に変更';
+    });
+    return label;
+  }
+
+  function showMoveConfirm() {
+    if (!dragSourceKey || !dragTargetKey) return;
+    var activeRes = getActiveReservations();
+    var src = activeRes[dragSourceKey];
+    if (!src) return;
+    var srcParts = dragSourceKey.split('_');
+    var srcTime = srcParts[1];
+    var tgtParts = dragTargetKey.split('_');
+    var tgtDoc = DOCTORS.find(function(d) { return d.id === tgtParts[0]; });
+    var tgtTime = tgtParts[1];
+    /* 担当医表記 */
+    var srcDocLabel, tgtDocLabel;
+    if (src.doctorPreferred) {
+      var history = src.doctorHistory || [];
+      if (history.length === 0) {
+        srcDocLabel = getDocNameById(srcParts[0]) + ' 希望';
+      } else {
+        srcDocLabel = getDocNameById(history[history.length - 1]) + ' に変更';
+      }
+      tgtDocLabel = (tgtDoc ? tgtDoc.name : tgtParts[0]) + ' に変更';
+    } else {
+      srcDocLabel = '希望なし';
+      tgtDocLabel = '希望なし';
+    }
+    var msg = '<strong>' + src.name + '</strong>さんの予約を<br>' +
+      srcTime + '（' + srcDocLabel + '）→ ' + tgtTime + '（' + tgtDocLabel + '）<br>に移動しますか？';
+    document.getElementById('move-confirm-msg').innerHTML = msg;
+    document.getElementById('modal-move-confirm').classList.add('open');
+  }
+
+  function closeMoveConfirm() {
+    document.getElementById('modal-move-confirm').classList.remove('open');
+    dragSourceKey = null;
+    dragTargetKey = null;
+  }
+
+  function executeDragMove() {
+    if (!dragSourceKey || !dragTargetKey) return;
+    var activeRes = getActiveReservations();
+    var src = activeRes[dragSourceKey];
+    if (!src) { closeMoveConfirm(); return; }
+    var name = src.name;
+    var srcDocId = dragSourceKey.split('_')[0];
+    var tgtDocId = dragTargetKey.split('_')[0];
+    var newHistory = (src.doctorHistory || []).slice();
+    var origDocId = src.originalDocId || srcDocId;
+    if (src.doctorPreferred) {
+      newHistory.push(tgtDocId);
+    }
+    activeRes[dragTargetKey] = { name: src.name, card: src.card, status: src.status, doctorPreferred: src.doctorPreferred, doctorHistory: newHistory, originalDocId: origDocId };
+    delete activeRes[dragSourceKey];
+    closeMoveConfirm();
+    activeRenderGantt();
+    showToast(name + 'さんの予約を移動しました');
   }
 
   function enterBlockMode(type) {
@@ -1323,8 +1437,14 @@
     blockMode = false;
     blockModeType = null;
     selectedSlotKeys.clear();
+    if (moveMode) cancelDragMoveMode();
     document.getElementById('gantt-normal-controls').style.display = 'flex';
     document.getElementById('gantt-select-controls').style.display = 'none';
+    document.getElementById('gantt-move-controls').style.display = 'none';
+    var rlM = document.getElementById('rl-gantt-move-controls');
+    if (rlM) rlM.style.display = 'none';
+    var rlN = document.getElementById('rl-gantt-normal-controls');
+    if (rlN) rlN.style.display = 'flex';
     renderGantt();
   }
 
@@ -1545,10 +1665,10 @@
     _afcTimer = setTimeout(autoFitCellNames, 150);
   });
 
-  /* ⑥ 過去のスロット判定 */
+  /* ⑥ 過去のスロット判定（現在時刻の30分前を基準） */
   function isPastSlot(time) {
     const now = new Date();
-    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const nowMins = now.getHours() * 60 + now.getMinutes() - 30;
     const [h, m] = time.split(':').map(Number);
     return (h * 60 + m) < nowMins;
   }
@@ -1582,19 +1702,19 @@
         const past = isPastSlot(time);
         const isSelected = blockMode && selectedSlotKeys.has(key);
         const isEmpty = !res || res.status === 'キャンセル';
-        const isBooked = res && (res.status === '予約済' || res.status === '来院済');
-        const moveBtn = `<span class="gcell-move-btn" onclick="event.stopPropagation();enterMoveMode('${key}')">移動</span>`;
 
         if (moveMode) {
-          /* 移動モード */
-          if (key === moveSourceKey) {
-            html += `<td class="gantt-cell gantt-move-source"><span class="gcell-name">${res.name}</span></td>`;
-          } else if (key === moveTargetKey) {
-            html += `<td class="gantt-cell gantt-move-target" onclick="selectMoveTarget('${key}')"></td>`;
-          } else if (isEmpty && !past && !(res && res.status === '停止')) {
-            html += `<td class="gantt-cell gantt-move-candidate" onclick="selectMoveTarget('${key}')"></td>`;
+          /* 移動モード（ドラッグ方式） */
+          var isDraggable = res && res.status !== 'キャンセル' && res.status !== '来院済' && res.status !== '停止';
+          var isDropTarget = isEmpty && !past && !(res && res.status === '停止');
+          if (isDraggable) {
+            html += `<td class="gantt-cell gantt-reserved gantt-move-draggable" onmousedown="onDragMoveStart(event,'${key}')">
+              <span class="gcell-name">${res.name}</span></td>`;
+          } else if (isDropTarget) {
+            html += `<td class="gantt-cell gantt-empty gantt-move-drop-target" data-drop-key="${key}"></td>`;
           } else {
-            html += `<td class="gantt-cell gantt-move-dim">${res && res.status !== 'キャンセル' ? '<span class="gcell-name">' + res.name + '</span>' : ''}</td>`;
+            var dimContent = res && res.status !== 'キャンセル' ? '<span class="gcell-name">' + res.name + '</span>' : '';
+            html += `<td class="gantt-cell gantt-move-dim">${dimContent}</td>`;
           }
         } else if (res && res.status === '停止') {
           /* 停止済み */
@@ -1613,13 +1733,13 @@
               <span class="gcell-name">${res.name}</span></td>`;
           } else if (past && res.status === '予約済') {
             html += `<td class="gantt-cell gantt-unprocessed" onclick="openDetailGantt('${key}')">
-              <span class="gcell-name">${res.name}</span>${moveBtn}</td>`;
+              <span class="gcell-name">${res.name}</span></td>`;
           } else if (res.status === '来院済') {
             html += `<td class="gantt-cell gantt-visited" onclick="openDetailGantt('${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
           } else {
             html += `<td class="gantt-cell gantt-reserved" onclick="openDetailGantt('${key}')">
-              <span class="gcell-name">${res.name}</span>${moveBtn}</td>`;
+              <span class="gcell-name">${res.name}</span></td>`;
           }
         } else {
           /* 空き枠 */
@@ -1785,7 +1905,7 @@
       if (v.card === card && v.status !== 'キャンセル') {
         var parts = k.split('_'); var docId = parts[0]; var time = parts[1];
         var doc = DOCTORS.find(function(d) { return d.id === docId; }) || { name:'不明', color:'#999' };
-        results.push({ key: k, time: time, doc: doc, status: v.status, bookingId: makeBookingId(k), dateStr: todayDateStr, source: 'today', sortDate: todaySortKey });
+        results.push({ key: k, time: time, doc: doc, docId: docId, resData: v, status: v.status, bookingId: makeBookingId(k), dateStr: todayDateStr, source: 'today', sortDate: todaySortKey });
       }
     });
 
@@ -1802,7 +1922,7 @@
           if (v.card === card && v.status !== 'キャンセル') {
             var parts = k.split('_'); var docId = parts[0]; var time = parts[1];
             var doc = DOCTORS.find(function(d) { return d.id === docId; }) || { name:'不明', color:'#999' };
-            results.push({ key: k, time: time, doc: doc, status: v.status, bookingId: makeBookingId(k), dateStr: listDateStr, source: 'list', sortDate: listSortKey });
+            results.push({ key: k, time: time, doc: doc, docId: docId, resData: v, status: v.status, bookingId: makeBookingId(k), dateStr: listDateStr, source: 'list', sortDate: listSortKey });
           }
         });
       }
@@ -1846,9 +1966,10 @@
     }
     var html = '';
     resList.forEach(function(r) {
+      var docLabel = r.resData ? buildDoctorDetailLabel(r.resData, r.docId) : r.doc.name;
       html += '<tr>'
             + '<td style="white-space:nowrap;font-weight:bold;">' + r.dateStr + ' ' + r.time + '</td>'
-            + '<td><span style="color:#000000;">' + r.doc.name + '</span></td>'
+            + '<td><span style="color:#000000;">' + docLabel + '</span></td>'
             + '<td style="font-variant-numeric:tabular-nums;">' + r.bookingId + '</td>'
             + '<td>' + makeStatusBadge(r.status) + '</td>'
             + '<td><button class="btn-cancel-sm" onclick="cancelPatientRes(this,\'' + r.key + '\',\'' + r.source + '\')">予約取消</button></td>'
@@ -1877,14 +1998,14 @@
           var parts = k.split('_');
           var docId = parts[0]; var time = parts[1];
           var doc = DOCTORS.find(function(dd) { return dd.id === docId; }) || { name:'不明' };
-          visits.push({ dateStr: dateStr, sortKey: y * 10000 + m * 100 + day, time: time, doc: doc, bookingId: makeBookingId(k) });
+          visits.push({ dateStr: dateStr, sortKey: y * 10000 + m * 100 + day, time: time, doc: doc, docId: docId, resData: v, bookingId: makeBookingId(k) });
         }
       });
     }
     /* 当日分・選択日分の来院済も追加 */
     var activeVisits = getPatientReservations(card).filter(function(r) { return r.status === '来院済'; });
     activeVisits.forEach(function(r) {
-      visits.push({ dateStr: r.dateStr, sortKey: r.sortDate, time: r.time, doc: r.doc, bookingId: r.bookingId });
+      visits.push({ dateStr: r.dateStr, sortKey: r.sortDate, time: r.time, doc: r.doc, docId: r.docId, resData: r.resData, bookingId: r.bookingId });
     });
     /* 並び順設定に従ってソート */
     var dir = pastVisitOrder === 'desc' ? -1 : 1;
@@ -1897,9 +2018,10 @@
     }
     var html = '';
     visits.forEach(function(v) {
+      var docLabel = v.resData ? buildDoctorDetailLabel(v.resData, v.docId) : v.doc.name;
       html += '<tr>'
             + '<td style="white-space:nowrap;font-weight:bold;">' + v.dateStr + ' ' + v.time + '</td>'
-            + '<td><span style="color:#000000;">' + v.doc.name + '</span></td>'
+            + '<td><span style="color:#000000;">' + docLabel + '</span></td>'
             + '<td style="font-variant-numeric:tabular-nums;">' + v.bookingId + '</td>'
             + '<td></td>'
             + '</tr>';
@@ -2668,6 +2790,7 @@
     else if (id === 'modal-slot-action') closeSlotAction();
     else if (id === 'modal-bulk-stop') closeBulkStop();
     else if (id === 'modal-pd-cancel') closePdCancel();
+    else if (id === 'modal-move-confirm') closeMoveConfirm();
   }
 
   /* ════ Detail modal ════ */
@@ -2684,7 +2807,8 @@
     document.getElementById('d-card').innerHTML =
       `<button class="card-link" onclick="openPatientDetail('${res.card}')">${res.card}</button>`;
     document.getElementById('d-time').textContent = todayStr + ' ' + time;
-    document.getElementById('d-doctor').innerHTML = `<span style="font-weight:700;color:#000000;">${doc.name}</span>`;
+    var docLabel = buildDoctorDetailLabel(res, docId);
+    document.getElementById('d-doctor').innerHTML = `<span style="font-weight:700;color:#000000;">${docLabel}</span>`;
     document.getElementById('d-status').innerHTML = makeStatusBadge(res.status);
 
     /* ⑦-1 ステータスに応じてボタン切替 */
@@ -3111,7 +3235,8 @@
           var pIdx = Math.floor(seededRandom(seed + 500) * patientKeys.length);
           var card = patientKeys[pIdx];
           var patient = PATIENT_DATA[card];
-          res[doc.id + '_' + time] = { name: patient.name, card: card, status: '予約済' };
+          var docPref = seededRandom(seed + 700) < 0.5;
+          res[doc.id + '_' + time] = { name: patient.name, card: card, status: '予約済', doctorPreferred: docPref, doctorHistory: [] };
         } else if (r < threshold + 0.05) {
           res[doc.id + '_' + time] = { status: '停止' };
         }
@@ -3505,17 +3630,19 @@
         const past = pastFn(time);
         const isSelected = blockMode && selectedSlotKeys.has(key);
         const isEmpty = !res || res.status === 'キャンセル';
-        const moveBtn = `<span class="gcell-move-btn" onclick="event.stopPropagation();enterMoveMode('${key}')">移動</span>`;
 
         if (moveMode) {
-          if (key === moveSourceKey) {
-            html += `<td class="gantt-cell gantt-move-source"><span class="gcell-name">${res.name}</span></td>`;
-          } else if (key === moveTargetKey) {
-            html += `<td class="gantt-cell gantt-move-target" onclick="selectMoveTarget('${key}')"></td>`;
-          } else if (isEmpty && !past && !(res && res.status === '停止')) {
-            html += `<td class="gantt-cell gantt-move-candidate" onclick="selectMoveTarget('${key}')"></td>`;
+          /* 移動モード（ドラッグ方式） */
+          var isDraggable = res && res.status !== 'キャンセル' && res.status !== '来院済' && res.status !== '停止';
+          var isDropTarget = isEmpty && !past && !(res && res.status === '停止');
+          if (isDraggable) {
+            html += `<td class="gantt-cell gantt-reserved gantt-move-draggable" onmousedown="onDragMoveStart(event,'${key}')">
+              <span class="gcell-name">${res.name}</span></td>`;
+          } else if (isDropTarget) {
+            html += `<td class="gantt-cell gantt-empty gantt-move-drop-target" data-drop-key="${key}"></td>`;
           } else {
-            html += `<td class="gantt-cell gantt-move-dim">${res && res.status !== 'キャンセル' ? '<span class="gcell-name">' + res.name + '</span>' : ''}</td>`;
+            var dimContent = res && res.status !== 'キャンセル' ? '<span class="gcell-name">' + res.name + '</span>' : '';
+            html += `<td class="gantt-cell gantt-move-dim">${dimContent}</td>`;
           }
         } else if (res && res.status === '停止') {
           if (blockMode && blockModeType === 'unblock') {
@@ -3531,13 +3658,13 @@
             html += `<td class="gantt-cell gantt-selection-dim"><span class="gcell-name">${res.name}</span></td>`;
           } else if (past && res.status === '予約済') {
             html += `<td class="gantt-cell gantt-unprocessed" onclick="openDetailGantt('${key}')">
-              <span class="gcell-name">${res.name}</span>${moveBtn}</td>`;
+              <span class="gcell-name">${res.name}</span></td>`;
           } else if (res.status === '来院済') {
             html += `<td class="gantt-cell gantt-visited" onclick="openDetailGantt('${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
           } else {
             html += `<td class="gantt-cell gantt-reserved" onclick="openDetailGantt('${key}')">
-              <span class="gcell-name">${res.name}</span>${moveBtn}</td>`;
+              <span class="gcell-name">${res.name}</span></td>`;
           }
         } else {
           if (past) {
@@ -3576,7 +3703,8 @@
     document.getElementById('d-card').innerHTML =
       '<button class="card-link" onclick="openPatientDetail(\'' + res.card + '\')">' + res.card + '</button>';
     document.getElementById('d-time').textContent = getContextDateStr() + ' ' + time;
-    document.getElementById('d-doctor').innerHTML = '<span style="font-weight:700;color:#000000;">' + doc.name + '</span>';
+    var docLabel = buildDoctorDetailLabel(res, docId);
+    document.getElementById('d-doctor').innerHTML = '<span style="font-weight:700;color:#000000;">' + docLabel + '</span>';
     document.getElementById('d-status').innerHTML = makeStatusBadge(res.status);
 
     cancelStep = 0;
@@ -3675,7 +3803,7 @@
 
   enterBlockMode = function(type) {
     blockMode = true; blockModeType = type; selectedSlotKeys.clear();
-    moveMode = false; moveSourceKey = null; moveTargetKey = null;
+    moveMode = false; dragSourceKey = null; dragTargetKey = null;
     document.getElementById('gantt-normal-controls').style.display = 'none';
     document.getElementById('gantt-select-controls').style.display = 'flex';
     document.getElementById('gantt-move-controls').style.display = 'none';
@@ -3800,7 +3928,7 @@
     } else {
       var name = PATIENT_DATA[card] ? PATIENT_DATA[card].name : dummyNames[parseInt(card.slice(-1)) % dummyNames.length];
       var time = currentBookingKey.split('_')[1];
-      getActiveReservations()[currentBookingKey] = { name: name, card: card, status: '予約済' };
+      getActiveReservations()[currentBookingKey] = { name: name, card: card, status: '予約済', doctorPreferred: false, doctorHistory: [] };
       closeBooking(); activeRenderGantt();
       showToast(time + ' に ' + name + 'さんの予約を追加しました');
       openPatientDetail(card, ganttContext === 'list' ? 'list' : 'dashboard');

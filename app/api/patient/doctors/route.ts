@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase";
 
 export interface Doctor {
   id: string;
@@ -67,18 +68,19 @@ export const DOCTORS: Doctor[] = [
 ];
 
 export async function GET() {
-  // Return doctors without sensitive internal data
-  const publicDoctors = DOCTORS.map(({ id, name, nameKana, role, specialty, avatarColor, initials, availableWeekdays, bio }) => ({
-    id,
-    name,
-    nameKana,
-    role,
-    specialty,
-    avatarColor,
-    initials,
-    availableWeekdays,
-    bio,
+  const { data, error } = await supabase
+    .from("staff")
+    .select("id, name, color");
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const doctors = (data ?? []).map((s) => ({
+    id: String(s.id),
+    name: s.name,
+    color: s.color,
   }));
 
-  return NextResponse.json({ doctors: publicDoctors });
+  return NextResponse.json({ doctors });
 }
