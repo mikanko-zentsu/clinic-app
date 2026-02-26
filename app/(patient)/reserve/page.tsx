@@ -199,7 +199,7 @@ function ReserveContent() {
     try {
       const res = await fetch(`/api/patient/verify-card?cardNumber=${cardNumber}`);
       const data = await res.json();
-      if (!res.ok || !data.valid) {
+      if (!res.ok || !data.patientId) {
         setError(data.error ?? "診察券番号が見つかりません");
         return;
       }
