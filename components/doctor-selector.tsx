@@ -88,7 +88,7 @@ export function DoctorSelector({ selectedId, onSelect }: DoctorSelectorProps) {
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-xs text-slate-400">診療日</span>
                 {WEEKDAY_LABELS.map((label, idx) => {
-                  const available = doctor.availableWeekdays.includes(idx);
+                  const available = !doctor.availableWeekdays || doctor.availableWeekdays.includes(idx);
                   return (
                     <span
                       key={label}
