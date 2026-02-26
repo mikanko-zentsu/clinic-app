@@ -13,10 +13,10 @@ function maskName(name: string): string {
     .join(" ");
 }
 
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { cardNumber } = body;
+    const { searchParams } = new URL(req.url);
+    const cardNumber = searchParams.get("cardNumber");
 
     if (!cardNumber) {
       return NextResponse.json({ error: "診察券番号が必要です" }, { status: 400 });
