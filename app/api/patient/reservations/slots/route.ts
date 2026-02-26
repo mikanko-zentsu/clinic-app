@@ -10,7 +10,7 @@ interface Slot {
 }
 
 const SLOT_MINUTES = 20;
-const SLOT_CAPACITY = 3;
+const SLOT_CAPACITY = 1;
 const MORNING_START   = 9 * 60;         // 09:00
 const MORNING_END     = 12 * 60 + 40;   // 12:40（最終開始枠）
 const AFTERNOON_START = 16 * 60;        // 16:00
