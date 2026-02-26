@@ -232,12 +232,10 @@ function ReserveContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          cardNumber,
+          patientId: cardNumber,
           date: selectedDate,
-          startTime: selectedTime,
+          time: selectedTime,
           doctorId: selectedDoctor?.id ?? null,
-          doctorName: selectedDoctor?.name ?? null,
-          maskedName,
         }),
       });
       const data = await res.json();
