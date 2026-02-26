@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DOCTORS } from "@/app/api/patient/doctors/route";
+import { supabase } from "@/lib/supabase";
 
-// Mock: some specific closed dates
-const SPECIFIC_CLOSED: Record<string, string> = {};
+const MORNING_SLOTS = 13; // 09:00〜12:40（13枠）
+const AFTERNOON_SLOTS = 12; // 16:00〜19:40（12枠）※19:40含む
+const TOTAL_SLOTS_PER_DAY = MORNING_SLOTS + AFTERNOON_SLOTS; // 25枠
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
@@ -12,21 +13,9 @@ function formatDate(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-// Mock reservation counts per day (seed-based)
-function getMockCount(dateStr: string, doctorId: string): number {
-  const key = dateStr + doctorId;
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) {
-    hash = (hash * 31 + key.charCodeAt(i)) & 0xffffffff;
-  }
-  return Math.abs(hash) % 10; // 0-9
-}
-
-const CAPACITY_PER_DAY = 8;
-
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const monthParam = searchParams.get("month"); // YYYY-MM
+  const monthParam = searchParams.get("month");
   const doctorId = searchParams.get("doctorId");
 
   if (!monthParam || !/^\d{4}-\d{2}$/.test(monthParam)) {
@@ -41,41 +30,56 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid month" }, { status: 400 });
   }
 
-  // Find doctor if specified
-  const doctor = doctorId ? DOCTORS.find((d) => d.id === doctorId) : null;
-
   const daysInMonth = getDaysInMonth(year, month);
+  const startDate = formatDate(year, month, 1);
+  const endDate = formatDate(year, month, daysInMonth);
+
+  // Supabaseから月全体の予約を一括取得
+  let query = supabase
+    .from("reservations")
+    .select("date, staff_id, time_slot")
+    .gte("date", startDate)
+    .lte("date", endDate)
+    .neq("status", "cancelled");
+
+  if (doctorId) {
+    query = query.eq("staff_id", doctorId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // 日付ごとの予約数を集計
+  const countMap = new Map<string, number>();
+  for (const row of data ?? []) {
+    const key = row.date;
+    countMap.set(key, (countMap.get(key) ?? 0) + 1);
+  }
+
   const days = [];
 
   for (let day = 1; day <= daysInMonth; day++) {
     const dateStr = formatDate(year, month, day);
     const date = new Date(year, month - 1, day);
-    const dayOfWeek = date.getDay(); // 0=Sun
+    const dayOfWeek = date.getDay();
 
-    // Check if doctor is available on this weekday
-    if (doctor && !doctor.availableWeekdays.includes(dayOfWeek)) {
-      days.push({ date: dateStr, status: "closed", reason: "担当医休診" });
-      continue;
-    }
-
-    // Sunday closed (if no specific doctor or doctor also unavailable)
-    if (!doctor && dayOfWeek === 0) {
+    // 日曜休診
+    if (dayOfWeek === 0) {
       days.push({ date: dateStr, status: "closed", reason: "定休日" });
       continue;
     }
 
-    if (SPECIFIC_CLOSED[dateStr]) {
-      days.push({ date: dateStr, status: "closed", reason: SPECIFIC_CLOSED[dateStr] });
-      continue;
-    }
-
-    const reservedCount = getMockCount(dateStr, doctorId ?? "default");
-    const remaining = CAPACITY_PER_DAY - reservedCount;
+    const reservedCount = countMap.get(dateStr) ?? 0;
+    const capacity = doctorId ? TOTAL_SLOTS_PER_DAY : TOTAL_SLOTS_PER_DAY * 3; // 担当医指定なしは3人分
+    const remaining = capacity - reservedCount;
 
     let status: "available" | "few" | "full";
     if (remaining <= 0) {
       status = "full";
-    } else if (remaining <= 2) {
+    } else if (remaining <= 3) {
       status = "few";
     } else {
       status = "available";
