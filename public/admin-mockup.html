@@ -508,7 +508,7 @@
       color: var(--foreground); background: #fff; cursor: pointer; outline: none;
     }
     .rl-month-select:focus { border-color: var(--primary); }
-    .rl-gantt-nav { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-shrink: 0; }
+    .rl-gantt-nav { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-shrink: 0; flex-wrap: wrap; }
     /* 月間KPIカード */
     .rl-kpi-bar {
       display: flex; gap: 6px; padding: 10px 14px 0; flex-shrink: 0; flex-wrap: wrap;
@@ -801,23 +801,23 @@
       </div>
       <!-- Gantt View -->
       <div id="list-gantt-view" style="display:none;flex-direction:column;height:100%;">
-        <div class="rl-gantt-nav">
-          <button class="rl-nav-btn" id="rl-prev-day" onclick="rlPrevDay()">← 前日</button>
-          <button class="rl-nav-btn" id="rl-next-day" onclick="rlNextDay()">→ 翌日</button>
-          <div id="rl-summary-bar" style="display:flex;align-items:center;gap:6px;margin-left:8px;">
+        <div class="rl-gantt-nav" style="flex-wrap:nowrap;">
+          <button class="rl-nav-btn" id="rl-prev-day" onclick="rlPrevDay()" style="flex-shrink:0;">← 前日</button>
+          <button class="rl-nav-btn" id="rl-next-day" onclick="rlNextDay()" style="flex-shrink:0;">→ 翌日</button>
+          <div id="rl-summary-bar" style="display:flex;align-items:center;gap:6px;margin-left:8px;flex-wrap:nowrap;flex-shrink:1;min-width:0;overflow:hidden;">
             <div class="summary-stat-card"><span class="summary-card-text">予約数　<span id="rl-stat-reservations">—</span></span></div>
             <div class="summary-stat-card"><span class="summary-card-text">稼働率　<span id="rl-stat-utilization">—</span></span></div>
             <div class="summary-stat-card"><span class="summary-card-text">田中　<span id="rl-occ-tanaka">—</span></span></div>
             <div class="summary-stat-card"><span class="summary-card-text">鈴木　<span id="rl-occ-suzuki">—</span></span></div>
             <div class="summary-stat-card"><span class="summary-card-text">佐藤　<span id="rl-occ-sato">—</span></span></div>
           </div>
-          <span id="rl-unprocessed-alert" style="display:none;align-items:center;gap:4px;font-size:22px;font-weight:700;color:#ff0000;margin-left:8px;">
+          <span id="rl-unprocessed-alert" style="display:none;align-items:center;gap:4px;font-size:22px;font-weight:700;color:#ff0000;margin-left:8px;white-space:nowrap;flex-shrink:0;">
             <span>&#9888;</span>
             <span>未処理の予約があります</span>
             <span id="rl-unprocessed-count">0</span>
             <span>件</span>
           </span>
-          <button class="rl-nav-btn" onclick="rlBackToCalendar()" style="margin-left:auto;">月一覧に戻る</button>
+          <button class="rl-nav-btn" onclick="rlBackToCalendar()" style="margin-left:auto;flex-shrink:0;">月一覧に戻る</button>
         </div>
         <div class="dash-gantt" style="flex:1;">
           <div class="card" style="flex:1;display:flex;flex-direction:column;min-height:0;">
@@ -1197,6 +1197,9 @@
   const todayStr = `${todayYear}年${todayMonth}月${todayDate}日（${todayWeekday}）`;
 
   /* ════ Data ════ */
+  /* 今日の日付を YYYY-MM-DD 形式で保持 */
+  const todayISO = TODAY.getFullYear() + '-' + String(TODAY.getMonth() + 1).padStart(2, '0') + '-' + String(TODAY.getDate()).padStart(2, '0');
+
   const DOCTORS = [
     { id: 'tanaka', name: '田中 誠',  role: '院長',    color: '#0d9488',
       docBg: '#ffffff',
@@ -1731,7 +1734,7 @@
           if (blockMode) {
             html += `<td class="gantt-cell gantt-selection-dim">
               <span class="gcell-name">${res.name}</span></td>`;
-          } else if (past && res.status === '予約済') {
+          } else if (res.status === '未処理' || (past && res.status === '予約済')) {
             html += `<td class="gantt-cell gantt-unprocessed" onclick="openDetailGantt('${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
           } else if (res.status === '来院済') {
@@ -1812,7 +1815,7 @@
       ALL_SLOTS.forEach(function(time) {
         if (!isPastSlot(time)) return;
         var res = reservations[doc.id + '_' + time];
-        if (res && res.status === '予約済') count++;
+        if (res && (res.status === '予約済' || res.status === '未処理')) count++;
       });
     });
     return count;
@@ -1829,7 +1832,7 @@
     }
   }
 
-  /* ⑦-2 患者情報モックデータ */
+  /* ⑦-2 患者情報モックデータ（APIから上書きされる） */
   const PATIENT_DATA = {
     '00001': { name:'山田 太郎', kana:'やまだ たろう', dob:'1985年3月12日', gender:'男性', zip:'160-0023', phone:'090-1234-5678', address:'東京都新宿区西新宿1-1-1', lastVisit:'2026年2月10日', notes:'腰痛・定期施術' },
     '00002': { name:'鈴木 花子', kana:'すずき はなこ', dob:'1990年7月24日', gender:'女性', zip:'150-0043', phone:'080-9876-5432', address:'東京都渋谷区道玄坂2-3-4', lastVisit:'2026年2月8日', notes:'肩こり・週1回通院' },
@@ -3418,6 +3421,13 @@
     listDateReservations = generateDayReservations(year, month, day);
     if (listDateReservations === null) listDateReservations = {};
 
+    // APIから該当日の予約データを読み込んで listDateReservations を上書き
+    var dateStr = year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    loadReservationDataForDate(dateStr).then(function(apiRes) {
+      listDateReservations = apiRes;
+      renderListGantt();
+    }).catch(function() {});
+
     // 担当医の勤務時間外・休診をガントチャートに反映
     (function() {
       var dowNumMap = { 'sun':0, 'mon':1, 'tue':2, 'wed':3, 'thu':4, 'fri':5, 'sat':6 };
@@ -3570,7 +3580,7 @@
       ALL_SLOTS.forEach(function(time) {
         if (!rlIsPastSlot(time)) return;
         var res = listDateReservations[doc.id + '_' + time];
-        if (res && res.status === '予約済') count++;
+        if (res && (res.status === '予約済' || res.status === '未処理')) count++;
       });
     });
     var el = document.getElementById('rl-unprocessed-alert');
@@ -3578,6 +3588,17 @@
     if (count > 0) {
       el.style.display = 'inline-flex';
       countEl.textContent = count;
+      // 改行されない範囲で最大フォントサイズに自動調整
+      var nav = document.querySelector('.rl-gantt-nav');
+      var summaryBar = document.getElementById('rl-summary-bar');
+      if (nav) {
+        el.style.fontSize = '22px';
+        var fontSize = 22;
+        while (fontSize > 10 && (nav.scrollWidth > nav.clientWidth || (summaryBar && summaryBar.scrollWidth > summaryBar.clientWidth))) {
+          fontSize--;
+          el.style.fontSize = fontSize + 'px';
+        }
+      }
     } else {
       el.style.display = 'none';
     }
@@ -3591,7 +3612,7 @@
     DOCTORS.forEach(function(doc) {
       ALL_SLOTS.forEach(function(time) {
         var res = listDateReservations[doc.id + '_' + time];
-        if (res && (res.status === '予約済' || res.status === '来院済')) {
+        if (res && (res.status === '予約済' || res.status === '来院済' || res.status === '未処理')) {
           reserved++; perDoc[doc.id].r++;
         }
       });
@@ -3656,7 +3677,7 @@
         } else if (res && res.status !== 'キャンセル') {
           if (blockMode) {
             html += `<td class="gantt-cell gantt-selection-dim"><span class="gcell-name">${res.name}</span></td>`;
-          } else if (past && res.status === '予約済') {
+          } else if (res.status === '未処理' || (past && res.status === '予約済')) {
             html += `<td class="gantt-cell gantt-unprocessed" onclick="openDetailGantt('${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
           } else if (res.status === '来院済') {
@@ -5064,6 +5085,132 @@ if (_effModal) {
     if (e.target === this) effectiveCancel();
   });
 }
+
+/* ════════════════════════════════════════════
+   API連携: スタッフ・予約・患者データ読み込み
+   ════════════════════════════════════════════ */
+
+async function loadStaffData() {
+  try {
+    const res = await fetch('/api/admin/staff');
+    const { staff } = await res.json();
+    DOCTORS.length = 0;
+    staff.forEach(function(s) {
+      DOCTORS.push({
+        id: s.slug,
+        name: s.name,
+        role: s.role,
+        color: s.color,
+        docBg: '#ffffff',
+        reservedBg: '#ffffff',
+        reservedText: '#000000',
+        listColor: s.color,
+        textColor: '#ffffff'
+      });
+    });
+    // doctorSchedules を再構築
+    doctorSchedules = {};
+    DOCTORS.forEach(doc => {
+      const sched = {};
+      (clinicSettings.workDays || [0,1,2,3,4]).forEach(d => {
+        sched[d] = {
+          am: clinicSettings.amStart + '〜' + clinicSettings.amEnd,
+          pm: clinicSettings.pmStart + '〜' + clinicSettings.pmEnd
+        };
+      });
+      doctorSchedules[doc.id] = { schedule: sched, holidays: [], extraWorkDays: [] };
+    });
+  } catch (e) {
+    console.error('スタッフデータの読み込みに失敗しました（モックデータで動作します）', e);
+  }
+}
+
+async function loadReservationData(dateStr) {
+  try {
+    const res = await fetch('/api/admin/reservations?date=' + dateStr);
+    const { reservations: data } = await res.json();
+    Object.keys(reservations).forEach(function(k) { delete reservations[k]; });
+    data.forEach(function(r) {
+      var key = r.staffId + '_' + r.time.slice(0, 5);
+      var statusMap = { visited: '来院済', unprocessed: '未処理', confirmed: '予約済' };
+      reservations[key] = {
+        name: r.patientName,
+        card: r.patientId,
+        status: statusMap[r.status] || '予約済',
+        doctorPreferred: false,
+        doctorHistory: []
+      };
+    });
+  } catch (e) {
+    console.error('予約データの読み込みに失敗しました（モックデータで動作します）', e);
+  }
+}
+
+async function loadReservationDataForDate(dateStr) {
+  listDateReservations = {};
+  renderListGantt();
+  try {
+    const res = await fetch('/api/admin/reservations?date=' + dateStr);
+    const { reservations: data } = await res.json();
+    var result = {};
+    data.forEach(function(r) {
+      var key = r.staffId + '_' + r.time.slice(0, 5);
+      var statusMap = { visited: '来院済', unprocessed: '未処理', confirmed: '予約済' };
+      result[key] = {
+        name: r.patientName,
+        card: r.patientId,
+        status: statusMap[r.status] || '予約済',
+        doctorPreferred: false,
+        doctorHistory: []
+      };
+    });
+    return result;
+  } catch (e) {
+    console.error('予約データの読み込みに失敗しました', e);
+    return {};
+  }
+}
+
+async function loadPatientData() {
+  try {
+    const res = await fetch('/api/admin/patients');
+    const { patients } = await res.json();
+    Object.keys(PATIENT_DATA).forEach(function(k) { delete PATIENT_DATA[k]; });
+    patients.forEach(function(p) {
+      PATIENT_DATA[p.card_id] = {
+        name: p.name,
+        kana: p.kana || '',
+        dob: p.dob || '',
+        gender: p.gender || '',
+        zip: p.zip || '',
+        phone: p.phone || '',
+        address: p.address || '',
+        lastVisit: '',
+        notes: p.notes || ''
+      };
+    });
+  } catch (e) {
+    console.error('患者データの読み込みに失敗しました（モックデータで動作します）', e);
+  }
+}
+
+async function loadInitialData() {
+  await Promise.all([
+    loadStaffData(),
+    loadReservationData(todayISO),
+    loadPatientData()
+  ]);
+  // データ読み込み後に画面を再描画
+  if (TODAY.getDay() !== 0) {
+    renderGantt();
+  }
+  searchPatients();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  loadInitialData();
+});
+
 </script>
 <!-- パスワード認証モーダル -->
 <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center;">

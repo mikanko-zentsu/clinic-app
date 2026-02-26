@@ -1,13 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-// Mock patient database（姓と名をスペースで区切って保持）
-const MOCK_PATIENTS: Record<string, string> = {
-  "00001": "山田 太郎",
-  "00002": "田中 花子",
-  "00003": "佐藤 次郎",
-  "12345": "鈴木 一郎",
-  "99999": "高橋 美咲",
-};
+import { supabase } from "@/lib/supabase";
 
 /**
  * 姓・名それぞれの1文字目のみ残し、残りを「*」でマスクする
@@ -21,26 +13,34 @@ function maskName(name: string): string {
     .join(" ");
 }
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const cardNumber = searchParams.get("cardNumber");
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { cardNumber } = body;
 
-  if (!cardNumber) {
-    return NextResponse.json({ error: "診察券番号が必要です" }, { status: 400 });
-  }
-
-  const fullName = MOCK_PATIENTS[cardNumber];
-
-  if (!fullName) {
-    // デモ用：4桁以上の数字はすべて受け付ける
-    if (/^\d{4,}$/.test(cardNumber)) {
-      return NextResponse.json({ valid: true, maskedName: maskName("山田 太郎") });
+    if (!cardNumber) {
+      return NextResponse.json({ error: "診察券番号が必要です" }, { status: 400 });
     }
-    return NextResponse.json(
-      { valid: false, error: "診察券番号が見つかりません" },
-      { status: 404 }
-    );
-  }
 
-  return NextResponse.json({ valid: true, maskedName: maskName(fullName) });
+    const { data, error } = await supabase
+      .from("patients")
+      .select("id, name")
+      .eq("card_id", cardNumber)
+      .single();
+
+    if (error || !data) {
+      if (error?.code === "PGRST116") {
+        // 該当レコードなし
+        return NextResponse.json({ error: "診察券番号が見つかりません" }, { status: 404 });
+      }
+      return NextResponse.json({ error: error?.message ?? "検索に失敗しました" }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      patientId: data.id,
+      maskedName: maskName(data.name),
+    });
+  } catch {
+    return NextResponse.json({ error: "診察券の照合に失敗しました" }, { status: 500 });
+  }
 }

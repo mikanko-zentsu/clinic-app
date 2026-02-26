@@ -1,94 +1,126 @@
 import { NextRequest, NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase";
 
-// Mock in-memory reservations store
-export const reservations: Array<{
-  reservationNumber: string;
-  cardNumber: string;
-  date: string;
-  startTime: string;
-  doctorId: string | null;
-  doctorName: string | null;
-  maskedName: string | null;
-  createdAt: string;
-  cancelled: boolean;
-}> = [];
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const date = searchParams.get("date");
+  const doctorId = searchParams.get("doctorId");
 
-let counter = 1;
+  if (!date) {
+    return NextResponse.json({ error: "date は必須です" }, { status: 400 });
+  }
 
-function generateReservationNumber(): string {
-  const num = String(counter++).padStart(4, "0");
-  return `R${num}`;
+  try {
+    let query = supabase
+      .from("reservations")
+      .select("id, patient_card_id, patient_name, time_slot, staff_id, status")
+      .eq("date", date)
+      .eq("status", "confirmed");
+
+    if (doctorId) {
+      query = query.eq("staff_id", doctorId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    const reservations = (data ?? []).map((r) => ({
+      id: r.id,
+      patientId: r.patient_card_id,
+      patientName: r.patient_name ?? "",
+      time: r.time_slot?.substring(0, 5),
+      doctorId: r.staff_id,
+      status: r.status,
+    }));
+
+    return NextResponse.json({ reservations });
+  } catch {
+    return NextResponse.json({ error: "予約の取得に失敗しました" }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { cardNumber, date, startTime, doctorId, doctorName, maskedName } = body;
+    const { patientId, patientName, doctorId, date, time } = body;
 
-    if (!cardNumber || !date || !startTime) {
+    if (!patientId || !doctorId || !date || !time) {
       return NextResponse.json(
-        { error: "cardNumber, date, startTime は必須です" },
+        { error: "patientId, doctorId, date, time は必須です" },
         { status: 400 }
       );
     }
 
-    const reservation = {
-      reservationNumber: generateReservationNumber(),
-      cardNumber,
-      date,
-      startTime,
-      doctorId: doctorId ?? null,
-      doctorName: doctorName ?? null,
-      maskedName: maskedName ?? null,
-      createdAt: new Date().toISOString(),
-      cancelled: false,
-    };
+    // 重複チェック：同日・同医師・同時間にconfirmedの予約があるか
+    const { data: existing, error: checkError } = await supabase
+      .from("reservations")
+      .select("id")
+      .eq("date", date)
+      .eq("staff_id", doctorId)
+      .eq("time_slot", time)
+      .eq("status", "confirmed");
 
-    reservations.push(reservation);
+    if (checkError) {
+      return NextResponse.json({ error: checkError.message }, { status: 500 });
+    }
 
-    return NextResponse.json({ reservation }, { status: 201 });
+    if (existing && existing.length > 0) {
+      return NextResponse.json(
+        { error: "この時間帯はすでに予約が入っています" },
+        { status: 409 }
+      );
+    }
+
+    // 予約を作成
+    const { data: inserted, error: insertError } = await supabase
+      .from("reservations")
+      .insert({
+        patient_card_id: patientId,
+        patient_name: patientName ?? null,
+        staff_id: doctorId,
+        date: date,
+        time_slot: time,
+        status: "confirmed",
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, reservation: inserted }, { status: 201 });
   } catch {
-    return NextResponse.json({ error: "リクエストの処理に失敗しました" }, { status: 500 });
+    return NextResponse.json({ error: "予約の作成に失敗しました" }, { status: 500 });
   }
 }
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const cardNumber = searchParams.get("cardNumber");
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { reservationId } = body;
 
-  if (cardNumber) {
-    const found = reservations.filter(
-      (r) => r.cardNumber === cardNumber && !r.cancelled
-    );
-    return NextResponse.json({ reservations: found });
+    if (!reservationId) {
+      return NextResponse.json(
+        { error: "reservationId は必須です" },
+        { status: 400 }
+      );
+    }
+
+    const { error } = await supabase
+      .from("reservations")
+      .update({ status: "cancelled" })
+      .eq("id", reservationId);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json({ error: "予約のキャンセルに失敗しました" }, { status: 500 });
   }
-
-  return NextResponse.json({ reservations });
-}
-
-export async function DELETE(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const reservationNumber = searchParams.get("reservationNumber");
-
-  if (!reservationNumber) {
-    return NextResponse.json(
-      { error: "reservationNumber は必須です" },
-      { status: 400 }
-    );
-  }
-
-  const reservation = reservations.find(
-    (r) => r.reservationNumber === reservationNumber && !r.cancelled
-  );
-
-  if (!reservation) {
-    return NextResponse.json(
-      { error: "予約が見つかりません" },
-      { status: 404 }
-    );
-  }
-
-  reservation.cancelled = true;
-
-  return NextResponse.json({ success: true, reservationNumber });
 }
