@@ -698,7 +698,7 @@
           <div class="summary-stat-card"><span class="summary-card-text">田中　<span id="occ-tanaka-r">—</span></span></div>
           <div class="summary-stat-card"><span class="summary-card-text">鈴木　<span id="occ-suzuki-r">—</span></span></div>
           <div class="summary-stat-card"><span class="summary-card-text">佐藤　<span id="occ-sato-r">—</span></span></div>
-          <span id="dash-unprocessed-alert" style="display:none;align-items:center;gap:4px;font-size:22px;font-weight:700;color:#ff0000;margin-left:8px;">
+          <span id="dash-unprocessed-alert" style="display:none;align-items:center;gap:4px;font-size:16px;font-weight:700;color:#ff0000;margin-left:8px;white-space:nowrap;flex-shrink:0;">
             <span>&#9888;</span>
             <span>未処理の予約があります</span>
             <span id="dash-unprocessed-count">0</span>
@@ -811,7 +811,7 @@
             <div class="summary-stat-card"><span class="summary-card-text">鈴木　<span id="rl-occ-suzuki">—</span></span></div>
             <div class="summary-stat-card"><span class="summary-card-text">佐藤　<span id="rl-occ-sato">—</span></span></div>
           </div>
-          <span id="rl-unprocessed-alert" style="display:none;align-items:center;gap:4px;font-size:22px;font-weight:700;color:#ff0000;margin-left:8px;white-space:nowrap;flex-shrink:0;">
+          <span id="rl-unprocessed-alert" style="display:none;align-items:center;gap:4px;font-size:16px;font-weight:700;color:#ff0000;margin-left:8px;white-space:nowrap;flex-shrink:0;">
             <span>&#9888;</span>
             <span>未処理の予約があります</span>
             <span id="rl-unprocessed-count">0</span>
@@ -1559,7 +1559,7 @@
           fixedH += t.offsetHeight;
         });
 
-        fixedH += 2 * (6 + 2 * (docCount + 2));
+        fixedH += 2 * (6 + 2 * (docCount + 2)) + 20;
 
         /* サマリーを固定コンパクト高さにし、残りをガント行に配分 */
         var summaryH = 24; /* 文字1行分＋最小padding */
@@ -1676,7 +1676,10 @@
     return (h * 60 + m) < nowMins;
   }
 
-  function renderSection(containerId, slots) {
+  function renderSection(containerId, slots, resData, pastFn, dateMode) {
+    if (!resData) resData = reservations;
+    if (!pastFn) pastFn = isPastSlot;
+    if (!dateMode) dateMode = 'today';
     let html = `<table class="gantt-table">
       <colgroup><col style="width:72px">${slots.map(() => '<col>').join('')}</colgroup>
       <thead><tr style="background:transparent">
@@ -1686,10 +1689,7 @@
       <tbody>`;
 
     DOCTORS.forEach(doc => {
-      /* ① Row: no background tint — tint only on name cell */
       html += `<tr>`;
-
-      /* ① Doctor name cell — tint (苗字のみ表示) */
       html += `<td class="gantt-doc-td" style="background:${doc.docBg}">
         <div class="gantt-doc-inner">
           <div>
@@ -1700,14 +1700,13 @@
 
       slots.forEach(time => {
         const key = `${doc.id}_${time}`;
-        const res = reservations[key];
+        const res = resData[key];
 
-        const past = isPastSlot(time);
+        const past = pastFn(time);
         const isSelected = blockMode && selectedSlotKeys.has(key);
         const isEmpty = !res || res.status === 'キャンセル';
 
         if (moveMode) {
-          /* 移動モード（ドラッグ方式） */
           var isDraggable = res && res.status !== 'キャンセル' && res.status !== '来院済' && res.status !== '停止';
           var isDropTarget = isEmpty && !past && !(res && res.status === '停止');
           if (isDraggable) {
@@ -1720,7 +1719,6 @@
             html += `<td class="gantt-cell gantt-move-dim">${dimContent}</td>`;
           }
         } else if (res && res.status === '停止') {
-          /* 停止済み */
           if (blockMode && blockModeType === 'unblock') {
             html += `<td class="gantt-cell gantt-selectable ${isSelected ? 'gantt-slot-selected' : 'gantt-blocked'}" onclick="toggleSlotSelection('${key}')">
               <span class="gcell-blocked">${isSelected ? '✓' : '停止'}</span></td>`;
@@ -1730,23 +1728,36 @@
             html += `<td class="gantt-cell gantt-blocked"><span class="gcell-blocked">停止</span></td>`;
           }
         } else if (res && res.status !== 'キャンセル') {
-          /* 予約済・来院済 */
           if (blockMode) {
             html += `<td class="gantt-cell gantt-selection-dim">
               <span class="gcell-name">${res.name}</span></td>`;
-          } else if (res.status === '未処理' || (past && res.status === '予約済')) {
-            html += `<td class="gantt-cell gantt-unprocessed" onclick="openDetailGantt('${key}')">
-              <span class="gcell-name">${res.name}</span></td>`;
           } else if (res.status === '来院済') {
+            /* 来院済は時間帯・日付に関わらず来院済スタイル */
             html += `<td class="gantt-cell gantt-visited" onclick="openDetailGantt('${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
+          } else if (dateMode === 'past') {
+            /* 過去日付：全て来院済スタイル */
+            html += `<td class="gantt-cell gantt-visited" onclick="openDetailGantt('${key}')">
+              <span class="gcell-name">${res.name}</span></td>`;
+          } else if (dateMode === 'today' && past) {
+            /* 当日の過去時間帯：未処理スタイル（赤字） */
+            html += `<td class="gantt-cell gantt-unprocessed" onclick="openDetailGantt('${key}')">
+              <span class="gcell-name">${res.name}</span></td>`;
+          } else if (dateMode === 'today') {
+            /* 当日の未来時間帯：通常の予約済スタイル（黒字） */
+            html += `<td class="gantt-cell gantt-reserved" onclick="openDetailGantt('${key}')">
+              <span class="gcell-name">${res.name}</span></td>`;
           } else {
+            /* 未来日付：通常の予約済スタイル */
             html += `<td class="gantt-cell gantt-reserved" onclick="openDetailGantt('${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
           }
         } else {
           /* 空き枠 */
-          if (past) {
+          if (dateMode === 'past') {
+            html += `<td class="gantt-cell gantt-past-empty"></td>`;
+          } else if (dateMode === 'today' && past) {
+            /* 当日の過去時間帯の空き枠はグレーアウト */
             html += `<td class="gantt-cell gantt-past-empty"></td>`;
           } else if (blockMode && blockModeType === 'stop') {
             html += `<td class="gantt-cell gantt-selectable ${isSelected ? 'gantt-slot-selected' : 'gantt-empty'}" onclick="toggleSlotSelection('${key}')">
@@ -1808,14 +1819,14 @@
     updateUnprocessedAlert();
   }
 
-  /* 未処理予約アラート */
+  /* 未処理予約アラート（当日の過去時間帯で来院済以外の予約をカウント） */
   function countUnprocessed() {
     var count = 0;
     DOCTORS.forEach(function(doc) {
       ALL_SLOTS.forEach(function(time) {
         if (!isPastSlot(time)) return;
         var res = reservations[doc.id + '_' + time];
-        if (res && (res.status === '予約済' || res.status === '未処理')) count++;
+        if (res && res.status !== 'キャンセル' && res.status !== '停止' && res.status !== '来院済') count++;
       });
     });
     return count;
@@ -1827,6 +1838,16 @@
     if (count > 0) {
       el.style.display = 'inline-flex';
       countEl.textContent = count;
+      // 改行されない範囲で最大フォントサイズに自動調整
+      var summaryBar = document.getElementById('dash-summary-bar');
+      if (summaryBar) {
+        el.style.fontSize = '16px';
+        var fontSize = 16;
+        while (fontSize > 10 && summaryBar.scrollWidth > summaryBar.clientWidth) {
+          fontSize--;
+          el.style.fontSize = fontSize + 'px';
+        }
+      }
     } else {
       el.style.display = 'none';
     }
@@ -3282,6 +3303,67 @@
   }
 
   /* ═══ Calendar rendering ═══ */
+  var calendarCache = {}; /* { "YYYY-MM": { days: {...}, kpi: {...} } } */
+  var SLOTS_PER_STAFF = 25; /* 午前13枠 + 午後12枠 */
+
+  function aggregateMonthData(reservations, year, month, staffCount, newPatients) {
+    var daysInMonth = getDaysInMonth(year, month);
+    /* 日付ごとに集計 */
+    var dayMap = {};
+    var monthBooked = 0, monthCancelled = 0, monthTotal = 0;
+    var monthPatients = {};
+
+    (reservations || []).forEach(function(r) {
+      if (!dayMap[r.date]) dayMap[r.date] = { booked: 0, cancelled: 0, patients: {} };
+      var entry = dayMap[r.date];
+      if (r.status === 'cancelled') {
+        entry.cancelled++;
+      } else {
+        entry.booked++;
+        if (r.patientId) entry.patients[r.patientId] = true;
+      }
+    });
+
+    var totalPerDay = staffCount * SLOTS_PER_STAFF;
+    var days = {};
+    for (var d = 1; d <= daysInMonth; d++) {
+      var dateStr = year + '-' + String(month).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      var dow = new Date(year, month - 1, d).getDay();
+      if (dow === 0) {
+        days[d] = { closed: true, booked: 0, total: 0 };
+        continue;
+      }
+      var entry = dayMap[dateStr];
+      var booked = entry ? entry.booked : 0;
+      var cancelled = entry ? entry.cancelled : 0;
+      days[d] = { closed: false, booked: booked, total: totalPerDay };
+      monthBooked += booked;
+      monthCancelled += cancelled;
+      monthTotal += totalPerDay;
+      if (entry) Object.keys(entry.patients).forEach(function(p) { monthPatients[p] = true; });
+    }
+
+    var uniquePatients = Object.keys(monthPatients).length;
+    var utilRate = monthTotal > 0 ? Math.round((monthBooked / monthTotal) * 100) : 0;
+    var cancelRate = (monthBooked + monthCancelled) > 0
+      ? Math.round((monthCancelled / (monthBooked + monthCancelled)) * 100) : 0;
+    var newCount = newPatients || 0;
+    var repeatRate = uniquePatients > 0
+      ? Math.round(((uniquePatients - newCount) / uniquePatients) * 100) : 0;
+
+    return {
+      days: days,
+      kpi: {
+        reservations: monthBooked,
+        utilization: utilRate,
+        cancelRate: cancelRate,
+        repeatRate: repeatRate,
+        newPatients: newCount,
+        uniquePatients: uniquePatients
+      }
+    };
+  }
+
   function renderCalendar() {
     var year = rlCurrentYear, month = rlCurrentMonth;
     var daysInMonth = getDaysInMonth(year, month);
@@ -3290,7 +3372,40 @@
     sel.value = year + '-' + (month < 10 ? '0' + month : month);
     document.getElementById('rl-prev-btn').disabled = (year === RL_MIN_YEAR && month <= RL_MIN_MONTH);
     document.getElementById('rl-next-btn').disabled = (year === RL_MAX_YEAR && month >= RL_MAX_MONTH);
+    document.getElementById('rl-month-title').textContent = year + '年' + month + '月';
 
+    var monthKey = year + '-' + (month < 10 ? '0' + month : month);
+    var cached = calendarCache[monthKey];
+
+    /* キャッシュがあればそのまま描画 */
+    if (cached) {
+      renderCalendarGrid(year, month, daysInMonth, firstDow, cached.days);
+      applyMonthlyKPI(cached.kpi);
+      return;
+    }
+
+    /* プレースホルダー描画 */
+    renderCalendarGrid(year, month, daysInMonth, firstDow, null);
+    applyMonthlyKPI(null);
+
+    /* 既存の /api/admin/reservations?month= を1回だけ呼び出し */
+    fetch('/api/admin/reservations?month=' + monthKey)
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(data) {
+        var result = aggregateMonthData(data.reservations, year, month, data.staffCount || 3, data.newPatients || 0);
+        calendarCache[monthKey] = result;
+        if (rlCurrentYear === year && rlCurrentMonth === month) {
+          renderCalendarGrid(year, month, daysInMonth, firstDow, result.days);
+          applyMonthlyKPI(result.kpi);
+        }
+      })
+      .catch(function(e) { console.error('月間データ取得エラー:', e); });
+  }
+
+  function renderCalendarGrid(year, month, daysInMonth, firstDow, daysData) {
     var html = '<div class="rl-dow-row">';
     ['月','火','水','木','金','土','日'].forEach(function(d, i) {
       var cls = 'rl-dow-cell';
@@ -3299,33 +3414,39 @@
       html += '<div class="' + cls + '">' + d + '</div>';
     });
     html += '</div><div class="rl-days-grid">';
-    /* Monday-start: convert Sunday(0) to 6, Monday(1) to 0, etc. */
     var firstDowMon = (firstDow + 6) % 7;
     for (var i = 0; i < firstDowMon; i++) html += '<div class="rl-day-cell rl-day-empty"></div>';
 
     var todayRef = new Date(todayYear, TODAY.getMonth(), todayDate);
     for (var d = 1; d <= daysInMonth; d++) {
       var dow = getDayOfWeek(year, month, d);
-      var counts = countDayReservations(year, month, d);
+      var dayInfo = daysData ? daysData[d] : null;
+      var isClosed = dow === 0 || (dayInfo && dayInfo.closed);
+      var loading = !daysData && dow !== 0;
+      var booked = dayInfo ? dayInfo.booked : 0;
+      var total = dayInfo ? dayInfo.total : 0;
       var isToday = (year === todayYear && month === todayMonth && d === todayDate);
       var isPast = new Date(year, month - 1, d) < todayRef;
       var cellClass = 'rl-day-cell';
       var holidayName = isHoliday(year, month, d);
-      cellClass += counts === null ? ' rl-day-closed' : ' rl-day-active';
+      cellClass += isClosed ? ' rl-day-closed' : ' rl-day-active';
       if (holidayName && dow !== 0) cellClass += ' rl-day-holiday';
       if (isToday) cellClass += ' rl-day-today';
       if (dow === 0) cellClass += ' rl-day-sun';
       if (dow === 6) cellClass += ' rl-day-sat';
       if (isPast) cellClass += ' rl-day-past';
-      if (counts !== null && dow !== 0) {
-        var utilPct = counts.total > 0 ? (counts.booked / counts.total) * 100 : 0;
+      if (!isClosed && !loading) {
+        var utilPct = total > 0 ? (booked / total) * 100 : 0;
         if (utilPct < 50) cellClass += ' rl-day-util-low';
       }
 
-      if (counts !== null) {
+      if (!isClosed) {
+        var countDisplay = loading
+          ? '<div class="rl-day-count" style="color:#aaa;">読込中...</div>'
+          : '<div class="rl-day-count"><span class="rl-count-label">予約数</span><span class="rl-count-val">' + booked + '</span><span class="rl-count-total">/' + total + '</span></div>';
         html += '<div class="' + cellClass + '" onclick="rlOpenDay(' + year + ',' + month + ',' + d + ')">'
               + '<div class="rl-day-num">' + d + '</div>'
-              + '<div class="rl-day-count"><span class="rl-count-label">予約数</span><span class="rl-count-val">' + counts.booked + '</span><span class="rl-count-total">/' + counts.total + '</span></div></div>';
+              + countDisplay + '</div>';
       } else {
         html += '<div class="' + cellClass + '"><div class="rl-day-num">' + d + '</div>'
               + '<div class="rl-day-label-closed">休診日</div></div>';
@@ -3336,62 +3457,25 @@
     for (var i = lastDowMon + 1; i < 7; i++) html += '<div class="rl-day-cell rl-day-empty"></div>';
     html += '</div>';
     document.getElementById('rl-calendar-grid').innerHTML = html;
-    document.getElementById('rl-month-title').textContent = year + '年' + month + '月';
-    updateMonthlyKPI(year, month);
   }
 
   /* ═══ Monthly KPI ═══ */
-  function updateMonthlyKPI(year, month) {
-    var daysInMonth = getDaysInMonth(year, month);
-    var totalBooked = 0, totalSlots = 0, totalCancelled = 0, totalSameDay = 0;
-    var patientSet = {}, newPatientCount = 0;
-    var repeatPatients = {};
-
-    for (var d = 1; d <= daysInMonth; d++) {
-      var data = generateDayReservations(year, month, d);
-      if (data === null) continue;
-      Object.keys(data).forEach(function(key) {
-        var v = data[key];
-        if (v.status === '停止') return;
-        totalSlots++;
-        if (v.status === '予約済' || v.status === '来院済') {
-          totalBooked++;
-          if (v.card) {
-            if (patientSet[v.card]) {
-              repeatPatients[v.card] = true;
-            }
-            patientSet[v.card] = true;
-          }
-        }
-      });
-      /* 停止枠を除いた全枠数に加算 */
-      var stopped = 0;
-      Object.values(data).forEach(function(v) { if (v.status === '停止') stopped++; });
+  function applyMonthlyKPI(kpi) {
+    if (!kpi) {
+      document.getElementById('rl-kpi-reservations').innerHTML = '—';
+      document.getElementById('rl-kpi-utilization').innerHTML = '—';
+      document.getElementById('rl-kpi-cancel').innerHTML = '—';
+      document.getElementById('rl-kpi-repeat').innerHTML = '—';
+      document.getElementById('rl-kpi-new').innerHTML = '—';
+      document.getElementById('rl-kpi-sameday').innerHTML = '—';
+      return;
     }
-
-    /* デモ用：各KPIを疑似ランダムで生成 */
-    var seed = year * 100 + month;
-    var cancelRate = Math.round(3 + seededRandom(seed + 1) * 7);
-    var uniquePatients = Object.keys(patientSet).length;
-    var newCount = Math.max(1, Math.round(uniquePatients * (0.15 + seededRandom(seed + 2) * 0.10)));
-    /* リピート率 = (月間来院患者数 - 新患数) ÷ 月間来院患者数 × 100 */
-    var repeatRate = uniquePatients > 0 ? Math.round(((uniquePatients - newCount) / uniquePatients) * 100) : 0;
-    var sameDayCount = Math.round(totalBooked * (0.08 + seededRandom(seed + 3) * 0.07));
-
-    /* 稼働率 = 全営業日の予約数 / 全営業日の可能枠数 */
-    var totalAvailable = 0;
-    for (var d = 1; d <= daysInMonth; d++) {
-      var c = countDayReservations(year, month, d);
-      if (c !== null) totalAvailable += c.total;
-    }
-    var utilRate = totalAvailable > 0 ? Math.round((totalBooked / totalAvailable) * 100) : 0;
-
-    document.getElementById('rl-kpi-reservations').innerHTML = totalBooked + '<span style="font-size:16px;font-weight:700;">件</span>';
-    document.getElementById('rl-kpi-utilization').innerHTML = utilRate + '<span style="font-size:16px;font-weight:700;">%</span>';
-    document.getElementById('rl-kpi-cancel').innerHTML = cancelRate + '<span style="font-size:16px;font-weight:700;">%</span>';
-    document.getElementById('rl-kpi-repeat').innerHTML = repeatRate + '<span style="font-size:16px;font-weight:700;">%</span>';
-    document.getElementById('rl-kpi-new').innerHTML = newCount + '<span style="font-size:16px;font-weight:700;">人</span>';
-    document.getElementById('rl-kpi-sameday').innerHTML = sameDayCount + '<span style="font-size:16px;font-weight:700;">件</span>';
+    document.getElementById('rl-kpi-reservations').innerHTML = kpi.reservations + '<span style="font-size:16px;font-weight:700;">件</span>';
+    document.getElementById('rl-kpi-utilization').innerHTML = kpi.utilization + '<span style="font-size:16px;font-weight:700;">%</span>';
+    document.getElementById('rl-kpi-cancel').innerHTML = kpi.cancelRate + '<span style="font-size:16px;font-weight:700;">%</span>';
+    document.getElementById('rl-kpi-repeat').innerHTML = kpi.repeatRate + '<span style="font-size:16px;font-weight:700;">%</span>';
+    document.getElementById('rl-kpi-new').innerHTML = kpi.newPatients + '<span style="font-size:16px;font-weight:700;">人</span>';
+    document.getElementById('rl-kpi-sameday').innerHTML = kpi.uniquePatients + '<span style="font-size:16px;font-weight:700;">人</span>';
   }
 
   /* Calendar navigation */
@@ -3566,25 +3650,46 @@
   }
 
   /* ═══ List gantt rendering ═══ */
+  function getListDateMode() {
+    if (!rlSelectedDate) return 'today';
+    var sel = new Date(rlSelectedDate.year, rlSelectedDate.month - 1, rlSelectedDate.day);
+    var todayRef = new Date(todayYear, TODAY.getMonth(), todayDate);
+    todayRef.setHours(0,0,0,0);
+    sel.setHours(0,0,0,0);
+    if (sel < todayRef) return 'past';
+    if (sel > todayRef) return 'future';
+    return 'today';
+  }
+
   function renderListGantt() {
-    renderSection('rl-gantt-morning', MORNING, listDateReservations, rlIsPastSlot);
-    renderSection('rl-gantt-afternoon', AFTERNOON, listDateReservations, rlIsPastSlot);
+    var mode = getListDateMode();
+    renderSection('rl-gantt-morning', MORNING, listDateReservations, rlIsPastSlot, mode);
+    renderSection('rl-gantt-afternoon', AFTERNOON, listDateReservations, rlIsPastSlot, mode);
     updateListCounters();
     updateListUnprocessedAlert();
     autoFitCellNames();
   }
 
   function updateListUnprocessedAlert() {
+    var el = document.getElementById('rl-unprocessed-alert');
+    var countEl = document.getElementById('rl-unprocessed-count');
+    var mode = getListDateMode();
+
+    /* 当日のみアラート表示、過去・未来は非表示 */
+    if (mode !== 'today') {
+      el.style.display = 'none';
+      return;
+    }
+
     var count = 0;
     DOCTORS.forEach(function(doc) {
       ALL_SLOTS.forEach(function(time) {
-        if (!rlIsPastSlot(time)) return;
+        if (!isPastSlot(time)) return;
         var res = listDateReservations[doc.id + '_' + time];
-        if (res && (res.status === '予約済' || res.status === '未処理')) count++;
+        if (res && res.status !== 'キャンセル' && res.status !== '停止' && res.status !== '来院済') count++;
       });
     });
-    var el = document.getElementById('rl-unprocessed-alert');
-    var countEl = document.getElementById('rl-unprocessed-count');
+
     if (count > 0) {
       el.style.display = 'inline-flex';
       countEl.textContent = count;
@@ -3592,8 +3697,8 @@
       var nav = document.querySelector('.rl-gantt-nav');
       var summaryBar = document.getElementById('rl-summary-bar');
       if (nav) {
-        el.style.fontSize = '22px';
-        var fontSize = 22;
+        el.style.fontSize = '16px';
+        var fontSize = 16;
         while (fontSize > 10 && (nav.scrollWidth > nav.clientWidth || (summaryBar && summaryBar.scrollWidth > summaryBar.clientWidth))) {
           fontSize--;
           el.style.fontSize = fontSize + 'px';
@@ -3631,9 +3736,10 @@
   }
 
   /* ═══ Override renderSection for parameterization ═══ */
-  renderSection = function(containerId, slots, resData, pastFn) {
+  renderSection = function(containerId, slots, resData, pastFn, dateMode) {
     if (!resData) resData = reservations;
     if (!pastFn) pastFn = isPastSlot;
+    if (!dateMode) dateMode = 'today';
     let html = `<table class="gantt-table">
       <colgroup><col style="width:72px">${slots.map(() => '<col>').join('')}</colgroup>
       <thead><tr style="background:transparent">
@@ -3653,7 +3759,6 @@
         const isEmpty = !res || res.status === 'キャンセル';
 
         if (moveMode) {
-          /* 移動モード（ドラッグ方式） */
           var isDraggable = res && res.status !== 'キャンセル' && res.status !== '来院済' && res.status !== '停止';
           var isDropTarget = isEmpty && !past && !(res && res.status === '停止');
           if (isDraggable) {
@@ -3677,18 +3782,26 @@
         } else if (res && res.status !== 'キャンセル') {
           if (blockMode) {
             html += `<td class="gantt-cell gantt-selection-dim"><span class="gcell-name">${res.name}</span></td>`;
-          } else if (res.status === '未処理' || (past && res.status === '予約済')) {
-            html += `<td class="gantt-cell gantt-unprocessed" onclick="openDetailGantt('${key}')">
-              <span class="gcell-name">${res.name}</span></td>`;
           } else if (res.status === '来院済') {
             html += `<td class="gantt-cell gantt-visited" onclick="openDetailGantt('${key}')">
+              <span class="gcell-name">${res.name}</span></td>`;
+          } else if (dateMode === 'past') {
+            html += `<td class="gantt-cell gantt-visited" onclick="openDetailGantt('${key}')">
+              <span class="gcell-name">${res.name}</span></td>`;
+          } else if (dateMode === 'today' && past) {
+            html += `<td class="gantt-cell gantt-unprocessed" onclick="openDetailGantt('${key}')">
+              <span class="gcell-name">${res.name}</span></td>`;
+          } else if (dateMode === 'today') {
+            html += `<td class="gantt-cell gantt-reserved" onclick="openDetailGantt('${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
           } else {
             html += `<td class="gantt-cell gantt-reserved" onclick="openDetailGantt('${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
           }
         } else {
-          if (past) {
+          if (dateMode === 'past') {
+            html += `<td class="gantt-cell gantt-past-empty"></td>`;
+          } else if (dateMode === 'today' && past) {
             html += `<td class="gantt-cell gantt-past-empty"></td>`;
           } else if (blockMode && blockModeType === 'stop') {
             html += `<td class="gantt-cell gantt-selectable ${isSelected ? 'gantt-slot-selected' : 'gantt-empty'}" onclick="toggleSlotSelection('${key}')">
