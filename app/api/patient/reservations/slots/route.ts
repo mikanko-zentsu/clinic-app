@@ -11,11 +11,21 @@ interface Slot {
 
 const SLOT_MINUTES = 20;
 const SLOT_CAPACITY = 3;
-const DAY_START = 9 * 60;       // 09:00
-const DAY_END = 17 * 60 + 40;   // 17:40
+const MORNING_START   = 9 * 60;         // 09:00
+const MORNING_END     = 12 * 60 + 40;   // 12:40（最終開始枠）
+const AFTERNOON_START = 16 * 60;        // 16:00
+const AFTERNOON_END   = 19 * 60 + 40;   // 19:40（最終開始枠）
 
 function minutesToTime(m: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+function generateSlots(start: number, end: number): number[] {
+  const slots: number[] = [];
+  for (let t = start; t + SLOT_MINUTES <= end; t += SLOT_MINUTES) {
+    slots.push(t);
+  }
+  return slots;
 }
 
 export async function GET(req: NextRequest) {
@@ -54,20 +64,23 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 09:00〜17:40の20分刻みスロットを生成
-    const slots: Slot[] = [];
-    for (let t = DAY_START; t + SLOT_MINUTES <= DAY_END; t += SLOT_MINUTES) {
+    // 午前(09:00〜12:40)・午後(16:00〜19:40)のスロットを生成
+    const allSlotMinutes = [
+      ...generateSlots(MORNING_START, MORNING_END),
+      ...generateSlots(AFTERNOON_START, AFTERNOON_END),
+    ];
+    const slots: Slot[] = allSlotMinutes.map((t) => {
       const startTime = minutesToTime(t);
       const endTime = minutesToTime(t + SLOT_MINUTES);
       const reservedCount = reservedMap.get(startTime) ?? 0;
-      slots.push({
+      return {
         startTime,
         endTime,
         capacity: SLOT_CAPACITY,
         reservedCount,
         isBooked: reservedCount >= SLOT_CAPACITY,
-      });
-    }
+      };
+    });
 
     return NextResponse.json({ date: dateParam, closed: false, slots });
   } catch {
