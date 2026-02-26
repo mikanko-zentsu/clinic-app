@@ -70,14 +70,14 @@ export const DOCTORS: Doctor[] = [
 export async function GET() {
   const { data, error } = await supabase
     .from("staff")
-    .select("id, name, color");
+    .select("id, name, color, slug");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   const doctors = (data ?? []).map((s) => ({
-    id: String(s.id),
+    id: s.slug,
     name: s.name,
     color: s.color,
   }));

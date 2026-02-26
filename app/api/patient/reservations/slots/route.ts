@@ -22,7 +22,7 @@ function minutesToTime(m: number): string {
 
 function generateSlots(start: number, end: number): number[] {
   const slots: number[] = [];
-  for (let t = start; t + SLOT_MINUTES <= end; t += SLOT_MINUTES) {
+  for (let t = start; t <= end; t += SLOT_MINUTES) {
     slots.push(t);
   }
   return slots;
