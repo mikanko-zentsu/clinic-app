@@ -15,16 +15,12 @@ import { CheckCircle, ChevronLeft, Clock } from "lucide-react";
 type Step = "doctor" | "calendar" | "time" | "card" | "confirm" | "complete";
 
 interface Slot {
-  startTime: string;
-  endTime: string;
-  capacity: number;
-  reservedCount: number;
+  time: string;
+  available: boolean;
 }
 
 interface SlotsResponse {
   date: string;
-  closed: boolean;
-  reason?: string;
   slots: Slot[];
 }
 
@@ -118,8 +114,8 @@ function ReserveContent() {
       setSlotsLoading(true);
       setSlots(null);
       const params = new URLSearchParams({ date: selectedDate });
-      if (selectedDoctor) params.set("doctorId", selectedDoctor.id);
-      fetch(`/api/patient/reservations/slots?${params}`)
+      if (selectedDoctor) params.set("staffId", selectedDoctor.id);
+      fetch(`/api/available-slots?${params}`)
         .then((r) => r.json())
         .then((data) => setSlots(data))
         .catch(() => setError("スロット情報の取得に失敗しました"))
@@ -148,12 +144,12 @@ function ReserveContent() {
     if (!slots?.slots) return { morningSlots: [], afternoonSlots: [] };
     return {
       morningSlots: slots.slots.filter((s) => {
-        const [h] = s.startTime.split(":").map(Number);
+        const [h] = s.time.split(":").map(Number);
         return h < 13;
       }),
       afternoonSlots: slots.slots.filter((s) => {
-        const [h] = s.startTime.split(":").map(Number);
-        return h >= 13;
+        const [h] = s.time.split(":").map(Number);
+        return h >= 16;
       }),
     };
   }, [slots]);
@@ -186,8 +182,8 @@ function ReserveContent() {
   };
 
   const handleTimeSelect = (slot: Slot) => {
-    if (slot.reservedCount >= slot.capacity) return;
-    setSelectedTime(slot.startTime);
+    if (!slot.available) return;
+    setSelectedTime(slot.time);
     setStep("card");
     setError(null);
   };
@@ -336,13 +332,13 @@ function ReserveContent() {
 
           {slotsLoading && <p className="py-12 text-center text-slate-400">読み込み中...</p>}
 
-          {!slotsLoading && slots?.closed && (
+          {!slotsLoading && slots && slots.slots.length === 0 && (
             <div className="py-8 text-center">
-              <p className="text-slate-600 font-semibold text-lg">{slots.reason ?? "この日は休診日です"}</p>
+              <p className="text-slate-600 font-semibold text-lg">この日は空き枠がありません</p>
             </div>
           )}
 
-          {!slotsLoading && slots && !slots.closed && (
+          {!slotsLoading && slots && slots.slots.length > 0 && (
             <div className="space-y-6">
               {morningSlots.length > 0 && (
                 <div>
@@ -350,30 +346,22 @@ function ReserveContent() {
                     <Clock className="h-4 w-4" />午前
                   </h3>
                   <div className="grid grid-cols-3 gap-2">
-                    {morningSlots.map((slot) => {
-                      const remaining = slot.capacity - slot.reservedCount;
-                      const isFull = remaining <= 0;
-                      return (
-                        <button
-                          key={slot.startTime}
-                          type="button"
-                          onClick={() => !isFull && handleTimeSelect(slot)}
-                          disabled={isFull}
-                          className={`flex flex-col items-center justify-center rounded-xl p-3 border-2 transition-all
-                            ${isFull
-                              ? "border-red-100 bg-red-50 opacity-50 cursor-not-allowed"
-                              : "border-sky-200 bg-sky-50 hover:bg-sky-100 active:scale-95 cursor-pointer"
-                            }`}
-                        >
-                          <span className="text-lg font-bold text-[hsl(222_47%_11%)]">{slot.startTime}</span>
-
-                          {isFull
-                            ? <Badge variant="danger" className="mt-1">満</Badge>
-                            : mode === "date" ? <Badge variant="success" className="mt-1">残 {remaining}</Badge> : null
-                          }
-                        </button>
-                      );
-                    })}
+                    {morningSlots.map((slot) => (
+                      <button
+                        key={slot.time}
+                        type="button"
+                        onClick={() => slot.available && handleTimeSelect(slot)}
+                        disabled={!slot.available}
+                        className={`flex flex-col items-center justify-center rounded-xl p-3 border-2 transition-all
+                          ${!slot.available
+                            ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
+                            : "border-sky-200 bg-white hover:bg-sky-50 active:scale-95 cursor-pointer"
+                          }`}
+                      >
+                        <span className={`text-lg font-bold ${slot.available ? "text-[hsl(222_47%_11%)]" : "text-slate-400"}`}>{slot.time}</span>
+                        {!slot.available && <Badge variant="muted" className="mt-1">満</Badge>}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
@@ -384,30 +372,22 @@ function ReserveContent() {
                     <Clock className="h-4 w-4" />午後
                   </h3>
                   <div className="grid grid-cols-3 gap-2">
-                    {afternoonSlots.map((slot) => {
-                      const remaining = slot.capacity - slot.reservedCount;
-                      const isFull = remaining <= 0;
-                      return (
-                        <button
-                          key={slot.startTime}
-                          type="button"
-                          onClick={() => !isFull && handleTimeSelect(slot)}
-                          disabled={isFull}
-                          className={`flex flex-col items-center justify-center rounded-xl p-3 border-2 transition-all
-                            ${isFull
-                              ? "border-red-100 bg-red-50 opacity-50 cursor-not-allowed"
-                              : "border-sky-200 bg-sky-50 hover:bg-sky-100 active:scale-95 cursor-pointer"
-                            }`}
-                        >
-                          <span className="text-lg font-bold text-[hsl(222_47%_11%)]">{slot.startTime}</span>
-
-                          {isFull
-                            ? <Badge variant="danger" className="mt-1">満</Badge>
-                            : mode === "date" ? <Badge variant="success" className="mt-1">残 {remaining}</Badge> : null
-                          }
-                        </button>
-                      );
-                    })}
+                    {afternoonSlots.map((slot) => (
+                      <button
+                        key={slot.time}
+                        type="button"
+                        onClick={() => slot.available && handleTimeSelect(slot)}
+                        disabled={!slot.available}
+                        className={`flex flex-col items-center justify-center rounded-xl p-3 border-2 transition-all
+                          ${!slot.available
+                            ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
+                            : "border-sky-200 bg-white hover:bg-sky-50 active:scale-95 cursor-pointer"
+                          }`}
+                      >
+                        <span className={`text-lg font-bold ${slot.available ? "text-[hsl(222_47%_11%)]" : "text-slate-400"}`}>{slot.time}</span>
+                        {!slot.available && <Badge variant="muted" className="mt-1">満</Badge>}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
