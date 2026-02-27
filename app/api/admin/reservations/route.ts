@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
       // 新患数: 対象月に予約があり、それ以前に予約が一切ない患者数
       // 対象月の患者一覧は query 実行後に算出（下で計算）
     } else if (date) {
-      query = query.eq("date", date).neq("status", "cancelled");
+      query = query.eq("date", date).neq("status", "cancelled").order("id", { ascending: true });
     } else {
       return NextResponse.json({ error: "Invalid params" }, { status: 400 });
     }
