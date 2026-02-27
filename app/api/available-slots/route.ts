@@ -1,56 +1,56 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
-const SCHEDULE: Record<string, {
+const doctorSchedules: Record<string, {
   workDays: number[];
+  fullDays?: number[];
   amOnlyDays?: number[];
-  amSlots: string[];
-  pmSlots: string[];
-  saturdayAmSlots?: string[];
+  weekdayAM: string[];
+  weekdayPM: string[];
+  saturdayAM: string[];
+  saturdayPM: string[];
 }> = {
   tanaka: {
     workDays: [1, 2, 3, 4, 5, 6],
-    amSlots: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40'],
-    pmSlots: ['16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40'],
+    weekdayAM: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40'],
+    weekdayPM: ['16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40'],
+    saturdayAM: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40'],
+    saturdayPM: [],
   },
   suzuki: {
-    workDays: [1, 3, 5],
+    workDays: [1, 2, 3, 4, 5],
+    fullDays: [1, 3, 5],
     amOnlyDays: [2, 4],
-    amSlots: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40'],
-    pmSlots: ['16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40'],
+    weekdayAM: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40'],
+    weekdayPM: ['16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40'],
+    saturdayAM: [],
+    saturdayPM: [],
   },
   sato: {
     workDays: [1, 2, 3, 4, 5, 6],
-    amSlots: ['10:40','11:00','11:20','11:40'],
-    pmSlots: ['16:00','16:20','16:40','17:00','17:20','17:40'],
-    saturdayAmSlots: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40'],
+    weekdayAM: ['10:40','11:00','11:20','11:40'],
+    weekdayPM: ['16:00','16:20','16:40','17:00','17:20','17:40'],
+    saturdayAM: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40'],
+    saturdayPM: [],
   },
 };
 
 const DOC_IDS = ["tanaka", "suzuki", "sato"];
 
-function getScheduledSlots(docId: string, dayOfWeek: number): string[] {
-  if (dayOfWeek === 0) return [];
-  const sched = SCHEDULE[docId];
-  if (!sched) return [];
+function getScheduledSlots(doctorId: string, date: string): string[] {
+  const dow = new Date(date + "T00:00:00Z").getUTCDay();
+  const s = doctorSchedules[doctorId];
+  if (!s || !s.workDays.includes(dow) || dow === 0) return [];
 
-  if (docId === "tanaka") {
-    if (!sched.workDays.includes(dayOfWeek)) return [];
-    if (dayOfWeek === 6) return sched.amSlots;
-    return [...sched.amSlots, ...sched.pmSlots];
-  }
-  if (docId === "suzuki") {
-    if (dayOfWeek === 6) return [];
-    if ([1, 3, 5].includes(dayOfWeek)) return [...sched.amSlots, ...sched.pmSlots];
-    if ([2, 4].includes(dayOfWeek)) return sched.amSlots;
+  if (dow === 6) return [...s.saturdayAM, ...s.saturdayPM];
+
+  if (doctorId === "suzuki") {
+    if (s.fullDays?.includes(dow)) return [...s.weekdayAM, ...s.weekdayPM];
+    if (s.amOnlyDays?.includes(dow)) return [...s.weekdayAM];
     return [];
   }
-  if (docId === "sato") {
-    if (!sched.workDays.includes(dayOfWeek)) return [];
-    if (dayOfWeek === 6) return sched.saturdayAmSlots ?? [];
-    return [...sched.amSlots, ...sched.pmSlots];
-  }
-  return [];
+
+  return [...s.weekdayAM, ...s.weekdayPM];
 }
 
 export async function GET(req: NextRequest) {
@@ -63,17 +63,14 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const dayOfWeek = new Date(dateParam + "T00:00:00Z").getUTCDay();
-
     // 1. Generate valid slots based on doctor schedule
     let validSlots: string[];
-    if (staffId && SCHEDULE[staffId]) {
-      validSlots = getScheduledSlots(staffId, dayOfWeek);
+    if (staffId && doctorSchedules[staffId]) {
+      validSlots = getScheduledSlots(staffId, dateParam);
     } else {
-      // Union of all doctors' scheduled slots
       const slotSet = new Set<string>();
       for (const docId of DOC_IDS) {
-        for (const slot of getScheduledSlots(docId, dayOfWeek)) {
+        for (const slot of getScheduledSlots(docId, dateParam)) {
           slotSet.add(slot);
         }
       }
@@ -100,34 +97,22 @@ export async function GET(req: NextRequest) {
     let slots: { time: string; available: boolean }[];
 
     if (staffId) {
-      // Single doctor: available if no reservation at that time for this doctor
-      const reservedTimes = new Set(
-        (data ?? []).map((r) => r.time_slot?.substring(0, 5))
-      );
+      const bookedSlots = (data ?? []).map((r) => r.time_slot?.substring(0, 5));
       slots = validSlots.map((time) => ({
         time,
-        available: !reservedTimes.has(time),
+        available: !bookedSlots.includes(time),
       }));
     } else {
       // No doctor specified: available if at least one doctor has an open slot
-      const reservedByTime = new Map<string, Set<string>>();
-      for (const r of data ?? []) {
-        const time = r.time_slot?.substring(0, 5);
-        if (time && r.actual_staff_id) {
-          if (!reservedByTime.has(time)) {
-            reservedByTime.set(time, new Set());
-          }
-          reservedByTime.get(time)!.add(r.actual_staff_id);
-        }
-      }
-
-      slots = validSlots.map((time) => {
-        const docsAtTime = DOC_IDS.filter((docId) =>
-          getScheduledSlots(docId, dayOfWeek).includes(time)
-        );
-        const reservedDocs = reservedByTime.get(time) ?? new Set();
-        const available = docsAtTime.some((docId) => !reservedDocs.has(docId));
-        return { time, available };
+      slots = validSlots.map((slot) => {
+        const availableDoctor = DOC_IDS.some((d) => {
+          const dSlots = getScheduledSlots(d, dateParam);
+          const dBooked = (data ?? [])
+            .filter((r) => r.actual_staff_id === d)
+            .map((r) => r.time_slot?.substring(0, 5));
+          return dSlots.includes(slot) && !dBooked.includes(slot);
+        });
+        return { time: slot, available: availableDoctor };
       });
     }
 

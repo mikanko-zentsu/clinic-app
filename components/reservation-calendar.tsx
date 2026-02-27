@@ -6,16 +6,10 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface DaySummary {
+interface DayCount {
   date: string;
-  status: "available" | "few" | "full" | "closed";
-  reason?: string;
-  count?: number;
-}
-
-interface MonthlySummary {
-  month: string;
-  days: DaySummary[];
+  available: number;
+  total: number;
 }
 
 interface ReservationCalendarProps {
@@ -24,10 +18,6 @@ interface ReservationCalendarProps {
 }
 
 const WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
-
-function formatYYYYMM(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
 
 function formatYYYYMMDD(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -38,22 +28,31 @@ export function ReservationCalendar({ onSelectDate, doctorId }: ReservationCalen
   today.setHours(0, 0, 0, 0);
 
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-  const [summary, setSummary] = useState<MonthlySummary | null>(null);
+  const [dayCounts, setDayCounts] = useState<Map<string, DayCount>>(new Map());
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const month = formatYYYYMM(viewDate);
+  const viewYear = viewDate.getFullYear();
+  const viewMonth = viewDate.getMonth() + 1;
 
   useEffect(() => {
     setLoading(true);
-    const params = new URLSearchParams({ month });
-    if (doctorId) params.set("doctorId", doctorId);
-    fetch(`/api/patient/reservations/monthly-summary?${params}`)
+    const params = new URLSearchParams({
+      year: String(viewYear),
+      month: String(viewMonth),
+    });
+    fetch(`/api/available-count?${params}`)
       .then((r) => r.json())
-      .then((data) => setSummary(data))
-      .catch(() => setSummary(null))
+      .then((data) => {
+        const map = new Map<string, DayCount>();
+        for (const d of data.days ?? []) {
+          map.set(d.date, d);
+        }
+        setDayCounts(map);
+      })
+      .catch(() => setDayCounts(new Map()))
       .finally(() => setLoading(false));
-  }, [month, doctorId]);
+  }, [viewYear, viewMonth]);
 
   const canGoPrev = () => {
     const prev = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1);
@@ -97,14 +96,14 @@ export function ReservationCalendar({ onSelectDate, doctorId }: ReservationCalen
     }
   }
 
-  const dayMap = new Map<string, DaySummary>();
-  summary?.days.forEach((d) => dayMap.set(d.date, d));
-
   const handleDayClick = (date: Date) => {
     const dateStr = formatYYYYMMDD(date);
-    const info = dayMap.get(dateStr);
+    const info = dayCounts.get(dateStr);
     if (date < today) return;
-    if (info?.status === "closed" || info?.status === "full") return;
+    // Sunday or no total slots = closed
+    if (!info || info.total === 0) return;
+    // Full
+    if (info.available <= 0) return;
     setSelectedDate(dateStr);
     onSelectDate(dateStr);
   };
@@ -164,13 +163,15 @@ export function ReservationCalendar({ onSelectDate, doctorId }: ReservationCalen
             }
 
             const dateStr = formatYYYYMMDD(date);
-            const info = dayMap.get(dateStr);
+            const info = dayCounts.get(dateStr);
             const isPast = date < today;
             const isSelected = selectedDate === dateStr;
             const dayOfWeek = (date.getDay() + 6) % 7; // 0=Mon, 5=Sat, 6=Sun
 
-            const isClosed = info?.status === "closed";
-            const isFull = info?.status === "full";
+            const isClosed = !info || info.total === 0;
+            const isFull = !isClosed && info.available <= 0;
+            const isFew = !isClosed && !isFull && info.available <= 3;
+            const isAvailable = !isClosed && !isFull && !isFew;
             const isDisabled = isPast || isClosed || isFull;
 
             return (
@@ -193,9 +194,9 @@ export function ReservationCalendar({ onSelectDate, doctorId }: ReservationCalen
                     ? "bg-slate-100"
                     : isFull
                     ? "bg-red-50"
-                    : info?.status === "few"
+                    : isFew
                     ? "bg-amber-50"
-                    : info?.status === "available"
+                    : isAvailable
                     ? "bg-emerald-50"
                     : ""
                 )}
@@ -221,7 +222,7 @@ export function ReservationCalendar({ onSelectDate, doctorId }: ReservationCalen
                 )}
                 {!isPast && isClosed && (
                   <Badge variant="muted" className="mt-1 text-xs px-1 py-0">
-                    {info?.reason === "担当医休診" ? "担当医休診" : "休診"}
+                    休診
                   </Badge>
                 )}
                 {!isPast && isFull && (
@@ -229,15 +230,15 @@ export function ReservationCalendar({ onSelectDate, doctorId }: ReservationCalen
                     満
                   </Badge>
                 )}
-                {!isPast && info?.status === "few" && (
-                  <Badge variant="warning" className="mt-1 text-xs px-1 py-0">
-                    △
-                  </Badge>
+                {!isPast && isFew && (
+                  <span className="mt-1 text-xs font-bold text-amber-600">
+                    残{info.available}
+                  </span>
                 )}
-                {!isPast && info?.status === "available" && (
-                  <Badge variant="success" className="mt-1 text-xs px-1 py-0">
-                    〇
-                  </Badge>
+                {!isPast && isAvailable && (
+                  <span className="mt-1 text-xs font-bold text-emerald-600">
+                    残{info!.available}
+                  </span>
                 )}
               </button>
             );
