@@ -1218,6 +1218,64 @@
   const AFTERNOON = ['16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40'];
   const ALL_SLOTS = [...MORNING, ...AFTERNOON];
 
+  /** スケジュールスロット定義 */
+  const doctorSchedules = {
+    tanaka: {
+      workDays: [1, 2, 3, 4, 5, 6],
+      saturday: { am: true, pm: false },
+      amSlots: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40'],
+      pmSlots: ['16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40']
+    },
+    suzuki: {
+      workDays: [1, 3, 5],
+      amOnlyDays: [2, 4],
+      saturday: { am: false, pm: false },
+      amSlots: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40'],
+      pmSlots: ['16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40']
+    },
+    sato: {
+      workDays: [1, 2, 3, 4, 5, 6],
+      saturday: { am: true, pm: false },
+      amSlots: ['10:40','11:00','11:20','11:40'],
+      pmSlots: ['16:00','16:20','16:40','17:00','17:20','17:40'],
+      saturdayAmSlots: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40']
+    }
+  };
+
+  /** スケジュール判定: 担当医がその曜日・時間に勤務しているか */
+  function isScheduledSlot(doctorId, dayOfWeek, timeSlot) {
+    // 日曜は全員休み
+    if (dayOfWeek === 0) return false;
+
+    if (doctorId === 'tanaka') {
+      if (!doctorSchedules.tanaka.workDays.includes(dayOfWeek)) return false;
+      if (dayOfWeek === 6) return doctorSchedules.tanaka.amSlots.includes(timeSlot);
+      return doctorSchedules.tanaka.amSlots.includes(timeSlot) || doctorSchedules.tanaka.pmSlots.includes(timeSlot);
+    }
+
+    if (doctorId === 'suzuki') {
+      // 土・日・火・木は休み（火木は午前のみ出勤）
+      if (dayOfWeek === 6) return false; // 土曜休み
+      if ([1, 3, 5].includes(dayOfWeek)) {
+        // 月水金：フル
+        return doctorSchedules.suzuki.amSlots.includes(timeSlot) || doctorSchedules.suzuki.pmSlots.includes(timeSlot);
+      }
+      if ([2, 4].includes(dayOfWeek)) {
+        // 火木：午前のみ
+        return doctorSchedules.suzuki.amSlots.includes(timeSlot);
+      }
+      return false;
+    }
+
+    if (doctorId === 'sato') {
+      if (!doctorSchedules.sato.workDays.includes(dayOfWeek)) return false;
+      if (dayOfWeek === 6) return doctorSchedules.sato.saturdayAmSlots.includes(timeSlot);
+      return doctorSchedules.sato.amSlots.includes(timeSlot) || doctorSchedules.sato.pmSlots.includes(timeSlot);
+    }
+
+    return false;
+  }
+
   const reservations = {
     'tanaka_09:00': { name: '山田 太郎',  card: '00001', status: '来院済', doctorPreferred: true, doctorHistory: [] },
     'tanaka_09:20': { name: '佐々木 健太', card: '11111', status: '予約済', doctorPreferred: false, doctorHistory: [] },
@@ -1550,8 +1608,9 @@
   }
 
   function renderGantt() {
-    renderSection('gantt-morning',   MORNING);
-    renderSection('gantt-afternoon', AFTERNOON);
+    var dow = TODAY.getDay();
+    renderSection('gantt-morning',   MORNING,   null, null, null, dow);
+    renderSection('gantt-afternoon', AFTERNOON, null, null, null, dow);
     updateCounters();
     autoFitCellNames();
   }
@@ -1712,10 +1771,11 @@
     return (h * 60 + m) < nowMins;
   }
 
-  function renderSection(containerId, slots, resData, pastFn, dateMode) {
+  function renderSection(containerId, slots, resData, pastFn, dateMode, dayOfWeek) {
     if (!resData) resData = reservations;
     if (!pastFn) pastFn = isPastSlot;
     if (!dateMode) dateMode = 'today';
+    if (dayOfWeek == null) dayOfWeek = TODAY.getDay();
     let html = `<table class="gantt-table">
       <colgroup><col style="width:72px">${slots.map(() => '<col>').join('')}</colgroup>
       <thead><tr style="background:transparent">
@@ -1741,10 +1801,13 @@
         const past = pastFn(time);
         const isSelected = blockMode && selectedSlotKeys.has(key);
         const isEmpty = !res || res.status === 'キャンセル';
+        const outsideSchedule = !isScheduledSlot(doc.id, dayOfWeek, time);
 
-        if (moveMode) {
+        if (outsideSchedule && isEmpty) {
+          html += `<td class="gantt-cell gantt-blocked"></td>`;
+        } else if (moveMode) {
           var isDraggable = res && res.status !== 'キャンセル' && res.status !== '来院済' && res.status !== '停止';
-          var isDropTarget = isEmpty && !past && !(res && res.status === '停止');
+          var isDropTarget = isEmpty && !past && !outsideSchedule && !(res && res.status === '停止');
           if (isDraggable) {
             html += `<td class="gantt-cell gantt-reserved gantt-move-draggable" onmousedown="onDragMoveStart(event,'${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
@@ -3737,9 +3800,9 @@
         if (effectiveDate && viewDateStr < effectiveDate) return;
 
         var scheduleNum = String(viewDow); // scheduleのキーは数字文字列
-        var daySchedule = doctorSchedules[doc.id] &&
-                          doctorSchedules[doc.id].schedule &&
-                          doctorSchedules[doc.id].schedule[scheduleNum];
+        var daySchedule = staffScheduleStore[doc.id] &&
+                          staffScheduleStore[doc.id].schedule &&
+                          staffScheduleStore[doc.id].schedule[scheduleNum];
 
         // 休診日（scheduleにキーなし）→ 全枠停止
         if (!daySchedule) {
@@ -3843,8 +3906,11 @@
 
   function renderListGantt() {
     var mode = getListDateMode();
-    renderSection('rl-gantt-morning', MORNING, listDateReservations, rlIsPastSlot, mode);
-    renderSection('rl-gantt-afternoon', AFTERNOON, listDateReservations, rlIsPastSlot, mode);
+    var dow = rlSelectedDate
+      ? new Date(rlSelectedDate.year, rlSelectedDate.month - 1, rlSelectedDate.day).getDay()
+      : TODAY.getDay();
+    renderSection('rl-gantt-morning', MORNING, listDateReservations, rlIsPastSlot, mode, dow);
+    renderSection('rl-gantt-afternoon', AFTERNOON, listDateReservations, rlIsPastSlot, mode, dow);
     updateListCounters();
     updateListUnprocessedAlert();
     autoFitCellNames();
@@ -3916,10 +3982,11 @@
   }
 
   /* ═══ Override renderSection for parameterization ═══ */
-  renderSection = function(containerId, slots, resData, pastFn, dateMode) {
+  renderSection = function(containerId, slots, resData, pastFn, dateMode, dayOfWeek) {
     if (!resData) resData = reservations;
     if (!pastFn) pastFn = isPastSlot;
     if (!dateMode) dateMode = 'today';
+    if (dayOfWeek == null) dayOfWeek = TODAY.getDay();
     let html = `<table class="gantt-table">
       <colgroup><col style="width:72px">${slots.map(() => '<col>').join('')}</colgroup>
       <thead><tr style="background:transparent">
@@ -3937,10 +4004,13 @@
         const past = pastFn(time);
         const isSelected = blockMode && selectedSlotKeys.has(key);
         const isEmpty = !res || res.status === 'キャンセル';
+        const outsideSchedule = !isScheduledSlot(doc.id, dayOfWeek, time);
 
-        if (moveMode) {
+        if (outsideSchedule && isEmpty) {
+          html += `<td class="gantt-cell gantt-blocked"></td>`;
+        } else if (moveMode) {
           var isDraggable = res && res.status !== 'キャンセル' && res.status !== '来院済' && res.status !== '停止';
-          var isDropTarget = isEmpty && !past && !(res && res.status === '停止');
+          var isDropTarget = isEmpty && !past && !outsideSchedule && !(res && res.status === '停止');
           if (isDraggable) {
             html += `<td class="gantt-cell gantt-reserved gantt-move-draggable" onmousedown="onDragMoveStart(event,'${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
@@ -4460,9 +4530,9 @@
     var viewDate = new Date(rlSelectedDate.year, rlSelectedDate.month - 1, rlSelectedDate.day);
     var viewDateStr = viewDate.toISOString().split('T')[0];
     var scheduleNum = String(viewDate.getDay());
-    var daySchedule = doctorSchedules[docId] &&
-                      doctorSchedules[docId].schedule &&
-                      doctorSchedules[docId].schedule[scheduleNum];
+    var daySchedule = staffScheduleStore[docId] &&
+                      staffScheduleStore[docId].schedule &&
+                      staffScheduleStore[docId].schedule[scheduleNum];
 
     // 反映日チェック
     var map = docKyushinMap[docId];
@@ -4514,10 +4584,10 @@
     }
   }
 
-  var doctorSchedules = {};
+  var staffScheduleStore = {};
   function buildDoctorSchedules() {
     DOCTORS.forEach(function(doc) {
-      if (doctorSchedules[doc.id]) return; // 既に構築済みならスキップ
+      if (staffScheduleStore[doc.id]) return; // 既に構築済みならスキップ
       var sched = {};
       if (doc.id === 'tanaka') {
         // 田中 誠（院長）: 月〜金 午前+午後、土 午前のみ
@@ -4539,7 +4609,7 @@
           };
         });
       }
-      doctorSchedules[doc.id] = { schedule: sched, holidays: [], extraWorkDays: [] };
+      staffScheduleStore[doc.id] = { schedule: sched, holidays: [], extraWorkDays: [] };
     });
   }
   buildDoctorSchedules();
@@ -4685,7 +4755,7 @@
     var amDefault = csTimeStr(clinicSettings.amStart) + '〜' + csTimeStr(clinicSettings.amEnd);
     var pmDefault = csTimeStr(clinicSettings.pmStart) + '〜' + csTimeStr(clinicSettings.pmEnd);
     DOCTORS.forEach(function(doc) {
-      var ds = doctorSchedules[doc.id];
+      var ds = staffScheduleStore[doc.id];
       if (!ds) return;
       if (!ds.schedule[d]) {
         ds.schedule[d] = { am: amDefault, pm: pmDefault };
@@ -4705,7 +4775,7 @@
   function renderDocCards() {
     var html = '';
     DOCTORS.forEach(function(doc) {
-      var ds = doctorSchedules[doc.id];
+      var ds = staffScheduleStore[doc.id];
       var isEditing = docEditingId === doc.id;
       html += '<div class="doc-card">';
       html += '<div class="doc-card-header"><div class="doc-card-info">';
@@ -4809,7 +4879,7 @@
 
   /* ─── Doctor schedule cell toggle helpers ─── */
   function setDocCellKyushin(docId, day, period) {
-    var ds = doctorSchedules[docId];
+    var ds = staffScheduleStore[docId];
     if (ds.schedule[day]) {
       delete ds.schedule[day][period];
       if (!ds.schedule[day].am && !ds.schedule[day].pm) delete ds.schedule[day];
@@ -4818,7 +4888,7 @@
   }
 
   function setDocCellKaijo(docId, day, period) {
-    var ds = doctorSchedules[docId];
+    var ds = staffScheduleStore[docId];
     if (!ds.schedule[day]) ds.schedule[day] = {};
     var times = period === 'am'
       ? csTimeStr(clinicSettings.amStart) + '〜' + csTimeStr(clinicSettings.amEnd)
@@ -4838,7 +4908,7 @@
   }
 
   function saveDocSchedule(docId) {
-    var ds = doctorSchedules[docId];
+    var ds = staffScheduleStore[docId];
     getScheduleDays().forEach(function(d) {
       ['am','pm'].forEach(function(period) {
         var startEl = document.getElementById('ds-' + docId + '-' + d + '-' + period + '-start');
@@ -4883,7 +4953,7 @@
     if (!doc) return;
     if (!confirm(doc.name + ' を担当医一覧から削除しますか？')) return;
     DOCTORS.splice(DOCTORS.indexOf(doc), 1);
-    delete doctorSchedules[docId];
+    delete staffScheduleStore[docId];
     renderDocCards();
     showToast(doc.name + ' を削除しました');
   }
@@ -5023,7 +5093,7 @@
       id: id, name: name, role: role, color: '#6b7280',
       docBg: '#ffffff', reservedBg: '#ffffff', reservedText: '#000000', listColor: '#999'
     });
-    doctorSchedules[id] = { schedule: sched, holidays: [], extraWorkDays: [] };
+    staffScheduleStore[id] = { schedule: sched, holidays: [], extraWorkDays: [] };
     addingNewDoctor = false;
     addDocTempSchedule = {};
     renderDocCards();
@@ -5032,14 +5102,14 @@
 
   function removeDocHoliday(docId, idx) {
     if (docEditingId !== docId) return;
-    doctorSchedules[docId].holidays.splice(idx, 1);
+    staffScheduleStore[docId].holidays.splice(idx, 1);
     renderDocCards();
   }
 
   function removeDocExtraWork(docId, idx) {
     if (docEditingId !== docId) return;
-    if (!doctorSchedules[docId].extraWorkDays) return;
-    doctorSchedules[docId].extraWorkDays.splice(idx, 1);
+    if (!staffScheduleStore[docId].extraWorkDays) return;
+    staffScheduleStore[docId].extraWorkDays.splice(idx, 1);
     renderDocCards();
   }
 
@@ -5080,12 +5150,12 @@
       existing = clinicSettings.extraWorkDays;
     } else if (miniCalTarget.indexOf('docextra_') === 0) {
       var deId = miniCalTarget.replace('docextra_', '');
-      var deDs = doctorSchedules[deId];
+      var deDs = staffScheduleStore[deId];
       if (!deDs.extraWorkDays) deDs.extraWorkDays = [];
       existing = deDs.extraWorkDays;
     } else {
       var docId = miniCalTarget.replace('doc_', '');
-      existing = doctorSchedules[docId] ? doctorSchedules[docId].holidays : [];
+      existing = staffScheduleStore[docId] ? staffScheduleStore[docId].holidays : [];
     }
 
     var html = '<div class="mini-cal-box">';
@@ -5146,9 +5216,9 @@
     /* 臨時診療日（担当医） */
     if (miniCalTarget.indexOf('docextra_') === 0) {
       var deId = miniCalTarget.replace('docextra_', '');
-      if (!doctorSchedules[deId]) return;
-      if (!doctorSchedules[deId].extraWorkDays) doctorSchedules[deId].extraWorkDays = [];
-      var arr = doctorSchedules[deId].extraWorkDays;
+      if (!staffScheduleStore[deId]) return;
+      if (!staffScheduleStore[deId].extraWorkDays) staffScheduleStore[deId].extraWorkDays = [];
+      var arr = staffScheduleStore[deId].extraWorkDays;
       var idx2 = arr.indexOf(dateStr);
       if (idx2 >= 0) { arr.splice(idx2, 1); }
       else { arr.push(dateStr); arr.sort(); }
@@ -5175,8 +5245,8 @@
       }
     } else {
       var docId = miniCalTarget.replace('doc_', '');
-      if (!doctorSchedules[docId]) return;
-      var arr = doctorSchedules[docId].holidays;
+      if (!staffScheduleStore[docId]) return;
+      var arr = staffScheduleStore[docId].holidays;
       var idx2 = arr.indexOf(dateStr);
       if (idx2 >= 0) {
         /* Removing — no warning */
@@ -5436,8 +5506,8 @@ async function loadStaffData() {
         textColor: '#ffffff'
       });
     });
-    // doctorSchedules を担当医ごとの個別スケジュールで構築
-    doctorSchedules = {};
+    // staffScheduleStore を担当医ごとの個別スケジュールで構築
+    staffScheduleStore = {};
     DOCTORS.forEach(doc => {
       const sched = {};
       if (doc.id === 'tanaka') {
@@ -5469,7 +5539,7 @@ async function loadStaffData() {
           };
         });
       }
-      doctorSchedules[doc.id] = { schedule: sched, holidays: [], extraWorkDays: [] };
+      staffScheduleStore[doc.id] = { schedule: sched, holidays: [], extraWorkDays: [] };
     });
   } catch (e) {
     console.error('スタッフデータの読み込みに失敗しました（モックデータで動作します）', e);
@@ -5482,6 +5552,9 @@ async function loadReservationData(dateStr) {
     const { reservations: data } = await res.json();
     Object.keys(reservations).forEach(function(k) { delete reservations[k]; });
     var statusMap = { visited: '来院済', unprocessed: '未処理', confirmed: '予約済' };
+    // 曜日を取得（スケジュール判定用）
+    var dp = dateStr.split('-');
+    var loadDow = new Date(parseInt(dp[0]), parseInt(dp[1])-1, parseInt(dp[2])).getDay();
     // staff_idがある予約を先に配置
     data.filter(function(r) { return r.staffId; }).forEach(function(r) {
       var key = r.staffId + '_' + r.time.slice(0, 5);
@@ -5496,7 +5569,7 @@ async function loadReservationData(dateStr) {
         doctorHistory: []
       };
     });
-    // staff_idがnullの予約を空きスロットにランダム割り振り
+    // staff_idがnullの予約を空きスロットにランダム割り振り（スケジュール内のみ）
     var docIds = DOCTORS.map(function(d) { return d.id; });
     var seed = 7;
     data.filter(function(r) { return !r.staffId; }).forEach(function(r) {
@@ -5509,7 +5582,7 @@ async function loadReservationData(dateStr) {
       }
       for (var k = 0; k < shuffled.length; k++) {
         var key = shuffled[k] + '_' + time;
-        if (!reservations[key]) {
+        if (!reservations[key] && isScheduledSlot(shuffled[k], loadDow, time)) {
           reservations[key] = {
             resId: r.id,
             name: r.patientName,
@@ -5537,6 +5610,9 @@ async function loadReservationDataForDate(dateStr) {
     const { reservations: data } = await res.json();
     var result = {};
     var statusMap = { visited: '来院済', unprocessed: '未処理', confirmed: '予約済' };
+    // 曜日を取得（スケジュール判定用）
+    var dp = dateStr.split('-');
+    var loadDow = new Date(parseInt(dp[0]), parseInt(dp[1])-1, parseInt(dp[2])).getDay();
     // staff_idがある予約を先に配置
     data.filter(function(r) { return r.staffId; }).forEach(function(r) {
       var key = r.staffId + '_' + r.time.slice(0, 5);
@@ -5551,7 +5627,7 @@ async function loadReservationDataForDate(dateStr) {
         doctorHistory: []
       };
     });
-    // staff_idがnullの予約を空きスロットにランダム割り振り
+    // staff_idがnullの予約を空きスロットにランダム割り振り（スケジュール内のみ）
     var docIds = DOCTORS.map(function(d) { return d.id; });
     var seed = 13;
     data.filter(function(r) { return !r.staffId; }).forEach(function(r) {
@@ -5564,7 +5640,7 @@ async function loadReservationDataForDate(dateStr) {
       }
       for (var k = 0; k < shuffled.length; k++) {
         var key = shuffled[k] + '_' + time;
-        if (!result[key]) {
+        if (!result[key] && isScheduledSlot(shuffled[k], loadDow, time)) {
           result[key] = {
             resId: r.id,
             name: r.patientName,

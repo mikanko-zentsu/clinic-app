@@ -27,6 +27,60 @@ const supabase = createClient(
 const DOC_IDS = ["tanaka", "suzuki", "sato"];
 const GANTT_SEED = 13; // loadReservationDataForDate のシード値
 
+// admin-mockup.html の doctorSchedules と同じスロットベース定義
+const SCHEDULE = {
+  tanaka: {
+    workDays: [1, 2, 3, 4, 5, 6],
+    amSlots: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40'],
+    pmSlots: ['16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40'],
+  },
+  suzuki: {
+    workDays: [1, 3, 5],
+    amOnlyDays: [2, 4],
+    amSlots: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40'],
+    pmSlots: ['16:00','16:20','16:40','17:00','17:20','17:40','18:00','18:20','18:40','19:00','19:20','19:40'],
+  },
+  sato: {
+    workDays: [1, 2, 3, 4, 5, 6],
+    amSlots: ['10:40','11:00','11:20','11:40'],
+    pmSlots: ['16:00','16:20','16:40','17:00','17:20','17:40'],
+    saturdayAmSlots: ['09:00','09:20','09:40','10:00','10:20','10:40','11:00','11:20','11:40','12:00','12:20','12:40'],
+  },
+};
+
+function isScheduledSlot(docId: string, dayOfWeek: number, time: string): boolean {
+  if (dayOfWeek === 0) return false;
+
+  if (docId === "tanaka") {
+    if (!SCHEDULE.tanaka.workDays.includes(dayOfWeek)) return false;
+    if (dayOfWeek === 6) return SCHEDULE.tanaka.amSlots.includes(time);
+    return SCHEDULE.tanaka.amSlots.includes(time) || SCHEDULE.tanaka.pmSlots.includes(time);
+  }
+
+  if (docId === "suzuki") {
+    if (dayOfWeek === 6) return false;
+    if ([1, 3, 5].includes(dayOfWeek)) {
+      return SCHEDULE.suzuki.amSlots.includes(time) || SCHEDULE.suzuki.pmSlots.includes(time);
+    }
+    if ([2, 4].includes(dayOfWeek)) {
+      return SCHEDULE.suzuki.amSlots.includes(time);
+    }
+    return false;
+  }
+
+  if (docId === "sato") {
+    if (!SCHEDULE.sato.workDays.includes(dayOfWeek)) return false;
+    if (dayOfWeek === 6) return SCHEDULE.sato.saturdayAmSlots.includes(time);
+    return SCHEDULE.sato.amSlots.includes(time) || SCHEDULE.sato.pmSlots.includes(time);
+  }
+
+  return false;
+}
+
+function getDayOfWeek(dateStr: string): number {
+  return new Date(dateStr + "T00:00:00Z").getUTCDay();
+}
+
 /**
  * ガントチャートと同じ乱数生成
  * Math.sin(seed) * 10000 の小数部を返す
@@ -42,7 +96,8 @@ function seededRandom(seed: number): number {
  * @returns resId → assignedDocId のマッピング
  */
 function assignDoctorsForDate(
-  rows: { id: number; staff_id: string | null; time_slot: string }[]
+  rows: { id: number; staff_id: string | null; time_slot: string }[],
+  dayOfWeek: number
 ): Map<number, string> {
   const result = new Map<number, string>();
   const occupied: Record<string, boolean> = {}; // key → true
@@ -73,10 +128,10 @@ function assignDoctorsForDate(
       shuffled[j] = tmp;
     }
 
-    // シャッフル後の順序で空きスロットを探す
+    // シャッフル後の順序で空きスロットを探す（スケジュール内のみ）
     for (const docId of shuffled) {
       const key = docId + "_" + time;
-      if (!occupied[key]) {
+      if (!occupied[key] && isScheduledSlot(docId, dayOfWeek, time)) {
         occupied[key] = true;
         result.set(r.id, docId);
         break;
@@ -95,7 +150,7 @@ async function main() {
   const { data: dates, error: dateErr } = await supabase
     .from("reservations")
     .select("date")
-    .lte("date", "2026-02-27")
+    .lte("date", "2026-03-31")
     .neq("status", "cancelled");
 
   if (dateErr) {
@@ -124,8 +179,9 @@ async function main() {
       continue;
     }
 
-    // ガントと同じロジックで担当医を割り振り
-    const assignments = assignDoctorsForDate(rows);
+    // ガントと同じロジックで担当医を割り振り（スケジュール考慮）
+    const dow = getDayOfWeek(date);
+    const assignments = assignDoctorsForDate(rows, dow);
 
     // actual_staff_id を更新
     let dateUpdated = 0;
