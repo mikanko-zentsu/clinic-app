@@ -15,6 +15,7 @@ interface DayCount {
 interface ReservationCalendarProps {
   onSelectDate: (date: string) => void;
   doctorId?: string | null;
+  hideCount?: boolean;
 }
 
 const WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
@@ -23,7 +24,7 @@ function formatYYYYMMDD(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export function ReservationCalendar({ onSelectDate, doctorId }: ReservationCalendarProps) {
+export function ReservationCalendar({ onSelectDate, doctorId, hideCount }: ReservationCalendarProps) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -232,12 +233,12 @@ export function ReservationCalendar({ onSelectDate, doctorId }: ReservationCalen
                 )}
                 {!isPast && isFew && (
                   <span className="mt-1 text-xs font-bold text-amber-600">
-                    残{info.available}
+                    {hideCount ? "△" : `残${info.available}`}
                   </span>
                 )}
                 {!isPast && isAvailable && (
                   <span className="mt-1 text-xs font-bold text-emerald-600">
-                    残{info!.available}
+                    {hideCount ? "○" : `残${info!.available}`}
                   </span>
                 )}
               </button>

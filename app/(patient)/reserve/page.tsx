@@ -308,7 +308,7 @@ function ReserveContent() {
         >
           <StepIndicator current={step} mode={mode} />
           {DoctorBanner}
-          <ReservationCalendar onSelectDate={handleDateSelect} doctorId={selectedDoctor?.id} />
+          <ReservationCalendar onSelectDate={handleDateSelect} doctorId={selectedDoctor?.id} hideCount={mode === "doctor"} />
 
           {error && <p className="mt-4 text-center text-red-600 font-semibold">{error}</p>}
 

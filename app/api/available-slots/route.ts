@@ -93,26 +93,37 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 3. Determine availability
+    // 3. Normalize time_slot to HH:MM format for comparison
+    const reservations = (data ?? []).map((r) => ({
+      time: String(r.time_slot ?? "").substring(0, 5),
+      doctor: r.actual_staff_id as string | null,
+    }));
+
+    // 4. Determine availability
     let slots: { time: string; available: boolean }[];
 
     if (staffId) {
-      const bookedSlots = (data ?? []).map((r) => r.time_slot?.substring(0, 5));
+      const bookedSet = new Set(reservations.map((r) => r.time));
       slots = validSlots.map((time) => ({
         time,
-        available: !bookedSlots.includes(time),
+        available: !bookedSet.has(time),
       }));
     } else {
       // No doctor specified: available if at least one doctor has an open slot
+      // Pre-build booked sets per doctor
+      const bookedByDoc = new Map<string, Set<string>>();
+      for (const docId of DOC_IDS) {
+        bookedByDoc.set(docId, new Set(
+          reservations.filter((r) => r.doctor === docId).map((r) => r.time)
+        ));
+      }
+
       slots = validSlots.map((slot) => {
-        const availableDoctor = DOC_IDS.some((d) => {
+        const available = DOC_IDS.some((d) => {
           const dSlots = getScheduledSlots(d, dateParam);
-          const dBooked = (data ?? [])
-            .filter((r) => r.actual_staff_id === d)
-            .map((r) => r.time_slot?.substring(0, 5));
-          return dSlots.includes(slot) && !dBooked.includes(slot);
+          return dSlots.includes(slot) && !bookedByDoc.get(d)!.has(slot);
         });
-        return { time: slot, available: availableDoctor };
+        return { time: slot, available };
       });
     }
 
