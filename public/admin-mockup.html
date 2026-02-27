@@ -1801,13 +1801,10 @@
         const past = pastFn(time);
         const isSelected = blockMode && selectedSlotKeys.has(key);
         const isEmpty = !res || res.status === 'キャンセル';
-        const outsideSchedule = !isScheduledSlot(doc.id, dayOfWeek, time);
 
-        if (outsideSchedule && isEmpty) {
-          html += `<td class="gantt-cell gantt-blocked"></td>`;
-        } else if (moveMode) {
+        if (moveMode) {
           var isDraggable = res && res.status !== 'キャンセル' && res.status !== '来院済' && res.status !== '停止';
-          var isDropTarget = isEmpty && !past && !outsideSchedule && !(res && res.status === '停止');
+          var isDropTarget = isEmpty && !past && !(res && res.status === '停止');
           if (isDraggable) {
             html += `<td class="gantt-cell gantt-reserved gantt-move-draggable" onmousedown="onDragMoveStart(event,'${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
@@ -4004,13 +4001,10 @@
         const past = pastFn(time);
         const isSelected = blockMode && selectedSlotKeys.has(key);
         const isEmpty = !res || res.status === 'キャンセル';
-        const outsideSchedule = !isScheduledSlot(doc.id, dayOfWeek, time);
 
-        if (outsideSchedule && isEmpty) {
-          html += `<td class="gantt-cell gantt-blocked"></td>`;
-        } else if (moveMode) {
+        if (moveMode) {
           var isDraggable = res && res.status !== 'キャンセル' && res.status !== '来院済' && res.status !== '停止';
-          var isDropTarget = isEmpty && !past && !outsideSchedule && !(res && res.status === '停止');
+          var isDropTarget = isEmpty && !past && !(res && res.status === '停止');
           if (isDraggable) {
             html += `<td class="gantt-cell gantt-reserved gantt-move-draggable" onmousedown="onDragMoveStart(event,'${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
@@ -5597,6 +5591,16 @@ async function loadReservationData(dateStr) {
         }
       }
     });
+    // スケジュール外の空きスロットを停止状態にする
+    var docIds2 = DOCTORS.map(function(d) { return d.id; });
+    ALL_SLOTS.forEach(function(time) {
+      docIds2.forEach(function(docId) {
+        var key = docId + '_' + time;
+        if (!reservations[key] && !isScheduledSlot(docId, loadDow, time)) {
+          reservations[key] = { status: '停止' };
+        }
+      });
+    });
   } catch (e) {
     console.error('予約データの読み込みに失敗しました（モックデータで動作します）', e);
   }
@@ -5654,6 +5658,16 @@ async function loadReservationDataForDate(dateStr) {
           break;
         }
       }
+    });
+    // スケジュール外の空きスロットを停止状態にする
+    var docIds2 = DOCTORS.map(function(d) { return d.id; });
+    ALL_SLOTS.forEach(function(time) {
+      docIds2.forEach(function(docId) {
+        var key = docId + '_' + time;
+        if (!result[key] && !isScheduledSlot(docId, loadDow, time)) {
+          result[key] = { status: '停止' };
+        }
+      });
     });
     return result;
   } catch (e) {
