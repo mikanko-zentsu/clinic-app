@@ -1310,6 +1310,22 @@
   let blockMode = false;
   let blockModeType = null;
   const selectedSlotKeys = new Set();
+  var autoBlockedSlots = new Set();
+
+  /** スケジュール外の空きスロットを autoBlockedSlots に登録 */
+  function rebuildAutoBlockedSlots(dow, resData) {
+    autoBlockedSlots.clear();
+    DOCTORS.forEach(function(doc) {
+      ALL_SLOTS.forEach(function(time) {
+        if (!isScheduledSlot(doc.id, dow, time)) {
+          var key = doc.id + '_' + time;
+          if (!resData[key] || resData[key].status === 'キャンセル') {
+            autoBlockedSlots.add(key);
+          }
+        }
+      });
+    });
+  }
 
   /* 移動モード（ドラッグ方式） */
   var moveMode = false;
@@ -1609,6 +1625,7 @@
 
   function renderGantt() {
     var dow = TODAY.getDay();
+    rebuildAutoBlockedSlots(dow, reservations);
     renderSection('gantt-morning',   MORNING,   null, null, null, dow);
     renderSection('gantt-afternoon', AFTERNOON, null, null, null, dow);
     updateCounters();
@@ -1801,10 +1818,11 @@
         const past = pastFn(time);
         const isSelected = blockMode && selectedSlotKeys.has(key);
         const isEmpty = !res || res.status === 'キャンセル';
+        const isBlocked = (res && res.status === '停止') || (autoBlockedSlots.has(key) && isEmpty);
 
         if (moveMode) {
           var isDraggable = res && res.status !== 'キャンセル' && res.status !== '来院済' && res.status !== '停止';
-          var isDropTarget = isEmpty && !past && !(res && res.status === '停止');
+          var isDropTarget = isEmpty && !past && !isBlocked;
           if (isDraggable) {
             html += `<td class="gantt-cell gantt-reserved gantt-move-draggable" onmousedown="onDragMoveStart(event,'${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
@@ -1814,7 +1832,7 @@
             var dimContent = res && res.status !== 'キャンセル' ? '<span class="gcell-name">' + res.name + '</span>' : '';
             html += `<td class="gantt-cell gantt-move-dim">${dimContent}</td>`;
           }
-        } else if (res && res.status === '停止') {
+        } else if (isBlocked) {
           if (blockMode && blockModeType === 'unblock') {
             html += `<td class="gantt-cell gantt-selectable ${isSelected ? 'gantt-slot-selected' : 'gantt-blocked'}" onclick="toggleSlotSelection('${key}')">
               <span class="gcell-blocked">${isSelected ? '✓' : '停止'}</span></td>`;
@@ -3363,6 +3381,7 @@
       var key = doc.id + '_' + currentBulkStopTime;
       var res = reservations[key];
       if (res && res.status === '停止') { delete reservations[key]; count++; }
+      if (autoBlockedSlots.has(key)) { autoBlockedSlots.delete(key); count++; }
     });
     var t = currentBulkStopTime;
     closeBulkStop();
@@ -3906,6 +3925,7 @@
     var dow = rlSelectedDate
       ? new Date(rlSelectedDate.year, rlSelectedDate.month - 1, rlSelectedDate.day).getDay()
       : TODAY.getDay();
+    rebuildAutoBlockedSlots(dow, listDateReservations);
     renderSection('rl-gantt-morning', MORNING, listDateReservations, rlIsPastSlot, mode, dow);
     renderSection('rl-gantt-afternoon', AFTERNOON, listDateReservations, rlIsPastSlot, mode, dow);
     updateListCounters();
@@ -4001,10 +4021,11 @@
         const past = pastFn(time);
         const isSelected = blockMode && selectedSlotKeys.has(key);
         const isEmpty = !res || res.status === 'キャンセル';
+        const isBlocked = (res && res.status === '停止') || (autoBlockedSlots.has(key) && isEmpty);
 
         if (moveMode) {
           var isDraggable = res && res.status !== 'キャンセル' && res.status !== '来院済' && res.status !== '停止';
-          var isDropTarget = isEmpty && !past && !(res && res.status === '停止');
+          var isDropTarget = isEmpty && !past && !isBlocked;
           if (isDraggable) {
             html += `<td class="gantt-cell gantt-reserved gantt-move-draggable" onmousedown="onDragMoveStart(event,'${key}')">
               <span class="gcell-name">${res.name}</span></td>`;
@@ -4014,7 +4035,7 @@
             var dimContent = res && res.status !== 'キャンセル' ? '<span class="gcell-name">' + res.name + '</span>' : '';
             html += `<td class="gantt-cell gantt-move-dim">${dimContent}</td>`;
           }
-        } else if (res && res.status === '停止') {
+        } else if (isBlocked) {
           if (blockMode && blockModeType === 'unblock') {
             html += `<td class="gantt-cell gantt-selectable ${isSelected ? 'gantt-slot-selected' : 'gantt-blocked'}" onclick="toggleSlotSelection('${key}')">
               <span class="gcell-blocked">${isSelected ? '✓' : '停止'}</span></td>`;
@@ -4242,7 +4263,10 @@
       selectedSlotKeys.forEach(function(key) { activeRes[key] = { status: '停止' }; });
       showToast(count + '枠を停止しました', '🚫');
     } else {
-      selectedSlotKeys.forEach(function(key) { if (activeRes[key] && activeRes[key].status === '停止') delete activeRes[key]; });
+      selectedSlotKeys.forEach(function(key) {
+        if (activeRes[key] && activeRes[key].status === '停止') delete activeRes[key];
+        autoBlockedSlots.delete(key);
+      });
       showToast(count + '枠の停止を解除しました', '✅');
     }
     cancelBlockMode();
@@ -4267,6 +4291,7 @@
         ALL_SLOTS.forEach(function(time) {
           var key = doc.id + '_' + time;
           if (activeRes[key] && activeRes[key].status === '停止') { delete activeRes[key]; count++; }
+          if (autoBlockedSlots.has(key)) { autoBlockedSlots.delete(key); count++; }
         });
       });
       showToast(count + '枠の停止をすべて解除しました', '✅');
@@ -5591,16 +5616,6 @@ async function loadReservationData(dateStr) {
         }
       }
     });
-    // スケジュール外の空きスロットを停止状態にする
-    var docIds2 = DOCTORS.map(function(d) { return d.id; });
-    ALL_SLOTS.forEach(function(time) {
-      docIds2.forEach(function(docId) {
-        var key = docId + '_' + time;
-        if (!reservations[key] && !isScheduledSlot(docId, loadDow, time)) {
-          reservations[key] = { status: '停止' };
-        }
-      });
-    });
   } catch (e) {
     console.error('予約データの読み込みに失敗しました（モックデータで動作します）', e);
   }
@@ -5658,16 +5673,6 @@ async function loadReservationDataForDate(dateStr) {
           break;
         }
       }
-    });
-    // スケジュール外の空きスロットを停止状態にする
-    var docIds2 = DOCTORS.map(function(d) { return d.id; });
-    ALL_SLOTS.forEach(function(time) {
-      docIds2.forEach(function(docId) {
-        var key = docId + '_' + time;
-        if (!result[key] && !isScheduledSlot(docId, loadDow, time)) {
-          result[key] = { status: '停止' };
-        }
-      });
     });
     return result;
   } catch (e) {
