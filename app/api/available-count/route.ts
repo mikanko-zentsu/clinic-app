@@ -66,29 +66,36 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "year, month are required" }, { status: 400 });
   }
 
+  const staffId = searchParams.get("staffId");
+
   const year = parseInt(yearParam, 10);
   const month = parseInt(monthParam, 10);
   if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
     return NextResponse.json({ error: "Invalid year/month" }, { status: 400 });
   }
 
+  const targetDocs = staffId && doctorSchedules[staffId] ? [staffId] : DOC_IDS;
+
   try {
     const daysInMonth = new Date(year, month, 0).getDate();
     const startDate = formatDate(year, month, 1);
     const endDate = formatDate(year, month, daysInMonth);
 
-    // Fetch all reservations for the month (paginated)
+    // Fetch reservations for the month (paginated, filtered by staffId if provided)
     const allRows: { date: string; time_slot: string; actual_staff_id: string | null }[] = [];
     let from = 0;
     const pageSize = 1000;
     while (true) {
-      const { data: page, error } = await supabase
+      let q = supabase
         .from("reservations")
         .select("date, time_slot, actual_staff_id")
         .gte("date", startDate)
         .lte("date", endDate)
-        .neq("status", "cancelled")
-        .range(from, from + pageSize - 1);
+        .neq("status", "cancelled");
+      if (staffId) {
+        q = q.eq("actual_staff_id", staffId);
+      }
+      const { data: page, error } = await q.range(from, from + pageSize - 1);
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
@@ -119,7 +126,7 @@ export async function GET(req: NextRequest) {
 
       // Count total valid doctor-slot pairs
       let total = 0;
-      for (const docId of DOC_IDS) {
+      for (const docId of targetDocs) {
         total += getScheduledSlots(docId, dateStr).length;
       }
 

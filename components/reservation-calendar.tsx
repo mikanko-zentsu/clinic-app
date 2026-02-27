@@ -41,6 +41,7 @@ export function ReservationCalendar({ onSelectDate, doctorId, hideCount }: Reser
     const params = new URLSearchParams({
       year: String(viewYear),
       month: String(viewMonth),
+      ...(doctorId ? { staffId: doctorId } : {}),
     });
     fetch(`/api/available-count?${params}`)
       .then((r) => r.json())
@@ -53,7 +54,7 @@ export function ReservationCalendar({ onSelectDate, doctorId, hideCount }: Reser
       })
       .catch(() => setDayCounts(new Map()))
       .finally(() => setLoading(false));
-  }, [viewYear, viewMonth]);
+  }, [viewYear, viewMonth, doctorId]);
 
   const canGoPrev = () => {
     const prev = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1);

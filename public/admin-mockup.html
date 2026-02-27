@@ -5588,11 +5588,29 @@ async function loadReservationData(dateStr) {
         doctorHistory: []
       };
     });
-    // staff_idがnullの予約を空きスロットにランダム割り振り（スケジュール内のみ）
+    // staff_idがnullの予約をactual_staff_idで配置（フォールバック: シャッフル）
     var docIds = DOCTORS.map(function(d) { return d.id; });
     var seed = 7;
     data.filter(function(r) { return !r.staffId; }).forEach(function(r) {
       var time = r.time.slice(0, 5);
+      // actual_staff_idがあればそのまま配置
+      if (r.actualStaffId) {
+        var key = r.actualStaffId + '_' + time;
+        if (!reservations[key]) {
+          reservations[key] = {
+            resId: r.id,
+            name: r.patientName,
+            card: r.patientId,
+            status: statusMap[r.status] || '予約済',
+            doctorPreferred: false,
+            preferredStaffId: null,
+            originalDocId: r.actualStaffId,
+            doctorHistory: []
+          };
+          return;
+        }
+      }
+      // actual_staff_idがnullまたは衝突時はシャッフルでフォールバック
       var shuffled = docIds.slice();
       for (var i = shuffled.length - 1; i > 0; i--) {
         var x = Math.sin(seed++) * 10000; x = x - Math.floor(x);
@@ -5600,9 +5618,9 @@ async function loadReservationData(dateStr) {
         var tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
       }
       for (var k = 0; k < shuffled.length; k++) {
-        var key = shuffled[k] + '_' + time;
-        if (!reservations[key] && isScheduledSlot(shuffled[k], loadDow, time)) {
-          reservations[key] = {
+        var key2 = shuffled[k] + '_' + time;
+        if (!reservations[key2] && isScheduledSlot(shuffled[k], loadDow, time)) {
+          reservations[key2] = {
             resId: r.id,
             name: r.patientName,
             card: r.patientId,
@@ -5646,11 +5664,29 @@ async function loadReservationDataForDate(dateStr) {
         doctorHistory: []
       };
     });
-    // staff_idがnullの予約を空きスロットにランダム割り振り（スケジュール内のみ）
+    // staff_idがnullの予約をactual_staff_idで配置（フォールバック: シャッフル）
     var docIds = DOCTORS.map(function(d) { return d.id; });
     var seed = 13;
     data.filter(function(r) { return !r.staffId; }).forEach(function(r) {
       var time = r.time.slice(0, 5);
+      // actual_staff_idがあればそのまま配置
+      if (r.actualStaffId) {
+        var key = r.actualStaffId + '_' + time;
+        if (!result[key]) {
+          result[key] = {
+            resId: r.id,
+            name: r.patientName,
+            card: r.patientId,
+            status: statusMap[r.status] || '予約済',
+            doctorPreferred: false,
+            preferredStaffId: null,
+            originalDocId: r.actualStaffId,
+            doctorHistory: []
+          };
+          return;
+        }
+      }
+      // actual_staff_idがnullまたは衝突時はシャッフルでフォールバック
       var shuffled = docIds.slice();
       for (var i = shuffled.length - 1; i > 0; i--) {
         var x = Math.sin(seed++) * 10000; x = x - Math.floor(x);
@@ -5658,9 +5694,9 @@ async function loadReservationDataForDate(dateStr) {
         var tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
       }
       for (var k = 0; k < shuffled.length; k++) {
-        var key = shuffled[k] + '_' + time;
-        if (!result[key] && isScheduledSlot(shuffled[k], loadDow, time)) {
-          result[key] = {
+        var key2 = shuffled[k] + '_' + time;
+        if (!result[key2] && isScheduledSlot(shuffled[k], loadDow, time)) {
+          result[key2] = {
             resId: r.id,
             name: r.patientName,
             card: r.patientId,

@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   try {
     let query = supabase
       .from("reservations")
-      .select("id, patient_card_id, staff_id, date, time_slot, status");
+      .select("id, patient_card_id, staff_id, actual_staff_id, date, time_slot, status");
 
     let newPatients = 0;
 
@@ -75,6 +75,8 @@ export async function GET(req: NextRequest) {
       patientName: patientMap[r.patient_card_id] ?? "",
       staffId: r.staff_id,
       staffName: staffMap[r.staff_id] ?? "",
+      actualStaffId: r.actual_staff_id,
+      actualStaffName: staffMap[r.actual_staff_id] ?? "",
       date: r.date,
       time: r.time_slot,
       status: r.status,
