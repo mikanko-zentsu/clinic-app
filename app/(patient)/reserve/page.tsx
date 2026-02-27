@@ -212,17 +212,6 @@ function ReserveContent() {
     setSubmitting(true);
     setError(null);
 
-    // 重複チェック: localStorage に同じ枠の予約が存在するか確認
-    console.log('selectedDate:', selectedDate, 'selectedTime:', selectedTime, 'doctorId:', selectedDoctor?.id);
-    const slotKey = `reservation_${selectedDoctor?.id ?? "none"}_${selectedDate}_${selectedTime}`;
-    console.log('チェックキー:', slotKey, '既存:', localStorage.getItem(slotKey));
-    console.log('localStorage全キー:', Object.keys(localStorage).filter(k => k.startsWith('reservation_')));
-    if (localStorage.getItem(slotKey)) {
-      setDuplicateError(true);
-      setSubmitting(false);
-      return;
-    }
-
     try {
       const res = await fetch("/api/patient/reservations", {
         method: "POST",
@@ -236,17 +225,14 @@ function ReserveContent() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "予約の登録に失敗しました");
+        if (res.status === 409) {
+          setDuplicateError(true);
+        } else {
+          setError(data.error ?? "予約の登録に失敗しました");
+        }
         return;
       }
-      // IDの先頭8文字に"R"を付与して予約番号とする
       const resNumber = "R" + String(data.reservation.id).substring(0, 8);
-      // localStorage に予約済みデータを保存
-      localStorage.setItem(slotKey, JSON.stringify({
-        reservationNumber: resNumber,
-        cardNumber,
-        doctorId: selectedDoctor?.id ?? null,
-      }));
       setReservationNumber(resNumber);
       setCountdown(10);
       setStep("complete");

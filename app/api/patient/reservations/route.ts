@@ -118,14 +118,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 重複チェック：同日・同医師・同時間にconfirmedの予約があるか
+    // 重複チェック：同日・同時間にconfirmedの予約で、actual_staff_idまたはstaff_idが一致するものがあるか
     const { data: existing, error: checkError } = await supabase
       .from("reservations")
       .select("id")
       .eq("date", date)
-      .eq("staff_id", doctorId)
       .eq("time_slot", time)
-      .eq("status", "confirmed");
+      .eq("status", "confirmed")
+      .or(`actual_staff_id.eq.${doctorId},staff_id.eq.${doctorId}`);
 
     if (checkError) {
       return NextResponse.json({ error: checkError.message }, { status: 500 });
