@@ -123,17 +123,18 @@ export async function GET(req: NextRequest) {
         total += getScheduledSlots(docId, dateStr).length;
       }
 
-      // Count reserved doctor-slot pairs (only within valid schedule)
+      // Count reserved doctor-slot pairs (deduplicated, only within valid schedule)
       const dateReservations = resByDate.get(dateStr) ?? [];
-      let reserved = 0;
+      const reservedKeys = new Set<string>();
       for (const r of dateReservations) {
         if (!r.actual_staff_id) continue;
-        const time = r.time_slot?.substring(0, 5);
+        const time = String(r.time_slot ?? "").substring(0, 5);
         const validSlots = getScheduledSlots(r.actual_staff_id, dateStr);
         if (validSlots.includes(time)) {
-          reserved++;
+          reservedKeys.add(`${r.actual_staff_id}_${time}`);
         }
       }
+      const reserved = reservedKeys.size;
 
       days.push({ date: dateStr, available: total - reserved, total });
     }
