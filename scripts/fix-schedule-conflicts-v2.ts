@@ -168,19 +168,28 @@ interface ReservationRow {
 async function main() {
   console.log("=== スケジュール外予約の移動スクリプト v2 ===\n");
 
-  // 全日付を取得
-  const { data: dateRows, error: dateErr } = await supabase
-    .from("reservations")
-    .select("date")
-    .lte("date", "2026-03-31")
-    .neq("status", "cancelled");
-
-  if (dateErr) {
-    console.error("日付取得エラー:", dateErr.message);
-    return;
+  // 全日付を取得（ページネーション対応）
+  const allDateRows: { date: string }[] = [];
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data: page, error: pageErr } = await supabase
+      .from("reservations")
+      .select("date")
+      .lte("date", "2026-03-31")
+      .neq("status", "cancelled")
+      .range(from, from + pageSize - 1);
+    if (pageErr) {
+      console.error("日付取得エラー:", pageErr.message);
+      return;
+    }
+    if (!page || page.length === 0) break;
+    allDateRows.push(...page);
+    if (page.length < pageSize) break;
+    from += pageSize;
   }
 
-  const uniqueDates = [...new Set((dateRows ?? []).map((r) => r.date))].sort();
+  const uniqueDates = [...new Set(allDateRows.map((r) => r.date))].sort();
   console.log(`対象日数: ${uniqueDates.length}日`);
 
   // 日付ごとの全予約をキャッシュ

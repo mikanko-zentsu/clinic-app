@@ -146,19 +146,28 @@ async function main() {
   console.log("=== actual_staff_id 同期スクリプト ===");
   console.log(`ガントチャートシード値: ${GANTT_SEED} (loadReservationDataForDate)`);
 
-  // 対象日付を全取得（<= 2026-02-27、cancelled 除外）
-  const { data: dates, error: dateErr } = await supabase
-    .from("reservations")
-    .select("date")
-    .lte("date", "2026-03-31")
-    .neq("status", "cancelled");
-
-  if (dateErr) {
-    console.error("日付取得エラー:", dateErr.message);
-    return;
+  // 対象日付を全取得（<= 2026-03-31、cancelled 除外、ページネーション対応）
+  const allDateRows: { date: string }[] = [];
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data: page, error: pageErr } = await supabase
+      .from("reservations")
+      .select("date")
+      .lte("date", "2026-03-31")
+      .neq("status", "cancelled")
+      .range(from, from + pageSize - 1);
+    if (pageErr) {
+      console.error("日付取得エラー:", pageErr.message);
+      return;
+    }
+    if (!page || page.length === 0) break;
+    allDateRows.push(...page);
+    if (page.length < pageSize) break;
+    from += pageSize;
   }
 
-  const uniqueDates = [...new Set((dates ?? []).map((r) => r.date))].sort();
+  const uniqueDates = [...new Set(allDateRows.map((r) => r.date))].sort();
   console.log(`対象日数: ${uniqueDates.length}日`);
 
   let totalUpdated = 0;
