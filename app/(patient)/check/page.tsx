@@ -8,6 +8,7 @@ import { NumPad } from "@/components/numpad";
 import { ChevronLeft, Trash2 } from "lucide-react";
 
 interface Reservation {
+  id: string;
   reservationNumber: string;
   cardNumber: string;
   date: string;
@@ -15,6 +16,8 @@ interface Reservation {
   doctorId: string | null;
   doctorName: string | null;
   maskedName: string | null;
+  status: string;
+  statusLabel: string;
 }
 
 type ViewState = "input" | "result";
@@ -72,8 +75,10 @@ export default function CheckPage() {
     setConfirmTarget(null);
     setCancelling(reservationNumber);
     try {
-      const res = await fetch(`/api/patient/reservations?reservationNumber=${reservationNumber}`, {
-        method: "DELETE",
+      const res = await fetch("/api/patient/reservations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reservationId: target?.id }),
       });
       if (!res.ok) {
         setError("予約の取消に失敗しました");
@@ -152,6 +157,17 @@ export default function CheckPage() {
                     {formatDate(r.date)}　{r.startTime}〜
                   </span>
                 </div>
+                <div className="flex items-center px-5 py-3">
+                  <span className="w-28 text-sm font-semibold text-slate-500 flex-shrink-0">ステータス</span>
+                  <span className={`font-bold ${
+                    r.status === "visited" ? "text-green-600" :
+                    r.status === "unprocessed" ? "text-amber-600" :
+                    "text-sky-600"
+                  }`}>
+                    {r.statusLabel}
+                  </span>
+                </div>
+                {r.status === "confirmed" && (
                 <div className="px-5 py-3">
                   <Button
                     variant="outline"
@@ -163,6 +179,7 @@ export default function CheckPage() {
                     {cancelling === r.reservationNumber ? "取消中..." : "予約取消"}
                   </Button>
                 </div>
+                )}
               </div>
             ))}
           </div>

@@ -243,15 +243,15 @@ function ReserveContent() {
         setError(data.error ?? "予約の登録に失敗しました");
         return;
       }
+      // IDの先頭8文字に"R"を付与して予約番号とする
+      const resNumber = "R" + String(data.reservation.id).substring(0, 8);
       // localStorage に予約済みデータを保存
       localStorage.setItem(slotKey, JSON.stringify({
-        reservationNumber: data.reservation.reservationNumber,
+        reservationNumber: resNumber,
         cardNumber,
         doctorId: selectedDoctor?.id ?? null,
       }));
-      console.log('保存したキー:', slotKey);
-      console.log('保存後のlocalStorage確認:', localStorage.getItem(slotKey));
-      setReservationNumber(data.reservation.reservationNumber);
+      setReservationNumber(resNumber);
       setCountdown(10);
       setStep("complete");
     } catch {

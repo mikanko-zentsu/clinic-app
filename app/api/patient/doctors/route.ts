@@ -43,7 +43,7 @@ export const DOCTORS: Doctor[] = [
     specialty: "鍼灸師",
     avatarColor: "#7c3aed",
     initials: "鈴木",
-    availableWeekdays: [1, 3, 5, 6], // Mon, Wed, Fri, Sat
+    availableWeekdays: [1, 2, 3, 4, 5], // Mon-Fri
     morningStart: "09:00",
     morningEnd: "12:40",
     afternoonStart: "16:00",
@@ -58,7 +58,7 @@ export const DOCTORS: Doctor[] = [
     specialty: "柔道整復師",
     avatarColor: "#ea580c",
     initials: "佐藤",
-    availableWeekdays: [2, 4, 6], // Tue, Thu, Sat
+    availableWeekdays: [1, 2, 3, 4, 5, 6], // Mon-Sat
     morningStart: "09:00",
     morningEnd: "12:40",
     afternoonStart: "16:00",
@@ -76,11 +76,27 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const doctors = (data ?? []).map((s) => ({
-    id: s.slug,
-    name: s.name,
-    color: s.color,
-  }));
+  // DOCTORS定数から名前でマッチして追加情報を付与
+  const nameToDoctorInfo: Record<string, Doctor> = {};
+  for (const d of DOCTORS) {
+    nameToDoctorInfo[d.name] = d;
+  }
+
+  const doctors = (data ?? []).map((s) => {
+    const info = nameToDoctorInfo[s.name];
+    return {
+      id: s.slug,
+      name: s.name,
+      color: s.color,
+      nameKana: info?.nameKana ?? "",
+      role: info?.role ?? "",
+      specialty: info?.specialty ?? "",
+      avatarColor: info?.avatarColor ?? s.color,
+      initials: info?.initials ?? s.name.charAt(0),
+      availableWeekdays: info?.availableWeekdays ?? [1, 2, 3, 4, 5, 6],
+      bio: info?.bio ?? "",
+    };
+  });
 
   return NextResponse.json({ doctors });
 }

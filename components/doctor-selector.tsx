@@ -17,7 +17,15 @@ export interface DoctorPublic {
   bio: string;
 }
 
-const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
+// 月曜始まり表示順（日曜は医院休診のため非表示）
+const WEEKDAY_ORDER = [
+  { label: "月", jsDay: 1 },
+  { label: "火", jsDay: 2 },
+  { label: "水", jsDay: 3 },
+  { label: "木", jsDay: 4 },
+  { label: "金", jsDay: 5 },
+  { label: "土", jsDay: 6 },
+];
 
 interface DoctorSelectorProps {
   selectedId: string | null;
@@ -87,17 +95,15 @@ export function DoctorSelector({ selectedId, onSelect }: DoctorSelectorProps) {
               {/* Available weekdays */}
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-xs text-slate-400">診療日</span>
-                {WEEKDAY_LABELS.map((label, idx) => {
-                  const available = !doctor.availableWeekdays || doctor.availableWeekdays.includes(idx);
+                {WEEKDAY_ORDER.map(({ label, jsDay }) => {
+                  const available = !doctor.availableWeekdays || doctor.availableWeekdays.includes(jsDay);
                   return (
                     <span
                       key={label}
                       className={cn(
                         "inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold",
                         available
-                          ? idx === 0
-                            ? "bg-red-100 text-red-600"
-                            : idx === 6
+                          ? jsDay === 6
                             ? "bg-blue-100 text-blue-600"
                             : "bg-sky-100 text-sky-700"
                           : "bg-slate-100 text-slate-300"

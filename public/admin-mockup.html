@@ -698,7 +698,7 @@
           <div class="summary-stat-card"><span class="summary-card-text">田中　<span id="occ-tanaka-r">—</span></span></div>
           <div class="summary-stat-card"><span class="summary-card-text">鈴木　<span id="occ-suzuki-r">—</span></span></div>
           <div class="summary-stat-card"><span class="summary-card-text">佐藤　<span id="occ-sato-r">—</span></span></div>
-          <span id="dash-unprocessed-alert" style="display:none;align-items:center;gap:4px;font-size:16px;font-weight:700;color:#ff0000;margin-left:8px;white-space:nowrap;flex-shrink:0;">
+          <span id="dash-unprocessed-alert" style="display:none;align-items:center;gap:4px;font-size:clamp(10px, 1.5vw, 22px);font-weight:700;color:#ff0000;margin-left:8px;white-space:nowrap;flex-shrink:0;">
             <span>&#9888;</span>
             <span>未処理の予約があります</span>
             <span id="dash-unprocessed-count">0</span>
@@ -811,7 +811,7 @@
             <div class="summary-stat-card"><span class="summary-card-text">鈴木　<span id="rl-occ-suzuki">—</span></span></div>
             <div class="summary-stat-card"><span class="summary-card-text">佐藤　<span id="rl-occ-sato">—</span></span></div>
           </div>
-          <span id="rl-unprocessed-alert" style="display:none;align-items:center;gap:4px;font-size:16px;font-weight:700;color:#ff0000;margin-left:8px;white-space:nowrap;flex-shrink:0;">
+          <span id="rl-unprocessed-alert" style="display:none;align-items:center;gap:4px;font-size:clamp(10px, 1.5vw, 22px);font-weight:700;color:#ff0000;margin-left:8px;white-space:nowrap;flex-shrink:0;">
             <span>&#9888;</span>
             <span>未処理の予約があります</span>
             <span id="rl-unprocessed-count">0</span>
@@ -981,8 +981,7 @@
                 <tr>
                   <th style="width:1%;white-space:nowrap;">日時</th>
                   <th style="width:15%;">担当医</th>
-                  <th style="width:15%;">予約番号</th>
-                  <th style="width:auto;"></th>
+                  <th style="width:auto;">予約番号</th>
                 </tr>
               </thead>
               <tbody id="pd-past-list"></tbody>
@@ -1161,7 +1160,7 @@
     <div style="font-size:11px;color:#ff0000;margin-bottom:18px;">※キャンセル後は元に戻せません</div>
     <div style="display:flex;gap:10px;justify-content:center;">
       <button onclick="closePdCancel()" style="flex:1;padding:10px;border:1px solid #aaa;background:#fff;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">戻る</button>
-      <button onclick="confirmPdCancel()" style="flex:1;padding:10px;border:none;background:#ff0000;color:#fff;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">キャンセルする</button>
+      <button id="btn-pd-cancel-confirm" onclick="confirmPdCancel()" style="flex:1;padding:10px;border:none;background:#ff0000;color:#fff;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">キャンセルする</button>
     </div>
   </div>
 </div>
@@ -1348,21 +1347,25 @@
     return doc ? doc.name : id;
   }
 
-  /* 詳細ポップアップ用：担当医履歴の完全表示 */
+  /* 詳細ポップアップ用：担当医履歴の表示
+     ルール:
+     (1) 希望なし → 常に「希望なし」
+     (2) 希望あり＋移動なし → 「{name}希望」
+     (3) 希望あり＋移動あり＋元≠最終 → 「{元}希望 → {最終}に変更」
+     (4) 希望あり＋移動あり＋元=最終 → 「{name}希望」（戻った場合）
+     ※複数移動は最初と最後のみ表示 */
   function buildDoctorDetailLabel(res, currentDocId) {
     if (!res.doctorPreferred) return '希望なし';
+    var origDocId = res.originalDocId || currentDocId;
     var history = res.doctorHistory || [];
     if (history.length === 0) {
-      return getDocNameById(currentDocId) + ' 希望';
+      return getDocNameById(origDocId) + ' 希望';
     }
-    /* 最初の担当医（= 予約元の枠のdocId）を特定: key構造から取得できないので履歴の最初の要素の「前」 */
-    /* 履歴は移動先のIDを順番に格納。最初の希望医は現在のkeyのdocIdでもなく履歴にもないので、
-       元の予約枠のdocIdを保持する必要がある。originalDocIdフィールドを使う */
-    var label = getDocNameById(res.originalDocId || currentDocId) + ' 希望';
-    history.forEach(function(hId) {
-      label += ' → ' + getDocNameById(hId) + ' に変更';
-    });
-    return label;
+    var lastDocId = history[history.length - 1];
+    if (origDocId === lastDocId) {
+      return getDocNameById(origDocId) + ' 希望';
+    }
+    return getDocNameById(origDocId) + ' 希望 → ' + getDocNameById(lastDocId) + ' に変更';
   }
 
   function showMoveConfirm() {
@@ -1378,13 +1381,16 @@
     /* 担当医表記 */
     var srcDocLabel, tgtDocLabel;
     if (src.doctorPreferred) {
-      var history = src.doctorHistory || [];
-      if (history.length === 0) {
-        srcDocLabel = getDocNameById(srcParts[0]) + ' 希望';
+      var origDocId = src.originalDocId || srcParts[0];
+      /* 移動元ラベル: 常に最初の希望担当医を基準に表示 */
+      srcDocLabel = getDocNameById(origDocId) + ' 希望';
+      /* 移動先ラベル: 元の希望医と同じなら「希望」、違えば「に変更」 */
+      var tgtName = tgtDoc ? tgtDoc.name : tgtParts[0];
+      if (tgtParts[0] === origDocId) {
+        tgtDocLabel = tgtName + ' 希望';
       } else {
-        srcDocLabel = getDocNameById(history[history.length - 1]) + ' に変更';
+        tgtDocLabel = tgtName + ' に変更';
       }
-      tgtDocLabel = (tgtDoc ? tgtDoc.name : tgtParts[0]) + ' に変更';
     } else {
       srcDocLabel = '希望なし';
       tgtDocLabel = '希望なし';
@@ -1408,13 +1414,38 @@
     if (!src) { closeMoveConfirm(); return; }
     var name = src.name;
     var srcDocId = dragSourceKey.split('_')[0];
+    var srcTime = dragSourceKey.split('_')[1];
     var tgtDocId = dragTargetKey.split('_')[0];
+    var tgtTime = dragTargetKey.split('_')[1];
     var newHistory = (src.doctorHistory || []).slice();
     var origDocId = src.originalDocId || srcDocId;
     if (src.doctorPreferred) {
       newHistory.push(tgtDocId);
     }
-    activeRes[dragTargetKey] = { name: src.name, card: src.card, status: src.status, doctorPreferred: src.doctorPreferred, doctorHistory: newHistory, originalDocId: origDocId };
+    /* 移動先の日付を取得 */
+    var moveDate;
+    if (ganttContext === 'list' && rlSelectedDate) {
+      moveDate = rlSelectedDate.year + '-' + String(rlSelectedDate.month).padStart(2,'0') + '-' + String(rlSelectedDate.day).padStart(2,'0');
+    } else {
+      moveDate = todayYear + '-' + String(todayMonth).padStart(2,'0') + '-' + String(todayDate).padStart(2,'0');
+    }
+    /* 移動APIを呼び出し */
+    if (src.resId) {
+      fetch('/api/admin/reservations/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reservationId: src.resId,
+          fromDate: moveDate,
+          fromTime: srcTime + ':00',
+          fromStaffId: srcDocId,
+          toDate: moveDate,
+          toTime: tgtTime + ':00',
+          toStaffId: tgtDocId
+        })
+      }).catch(function(e) { console.error('移動API呼び出しに失敗:', e); });
+    }
+    activeRes[dragTargetKey] = { name: src.name, card: src.card, status: src.status, resId: src.resId, doctorPreferred: src.doctorPreferred, doctorHistory: newHistory, originalDocId: origDocId, preferredStaffId: src.preferredStaffId };
     delete activeRes[dragSourceKey];
     closeMoveConfirm();
     activeRenderGantt();
@@ -1616,6 +1647,11 @@
           bar.querySelectorAll('.summary-card-text').forEach(function(el) {
             el.style.fontSize = cellFontSize + 'px';
           });
+        });
+        /* ②-c 未処理アラートもサマリーと同じサイズに揃える */
+        ['dash-unprocessed-alert', 'rl-unprocessed-alert'].forEach(function(id) {
+          var el = document.getElementById(id);
+          if (el) el.style.fontSize = cellFontSize + 'px';
         });
       }
 
@@ -1979,78 +2015,189 @@
     container.innerHTML = html;
   }
 
-  /* ⑩ 予約一覧描画（来院済は除外 → 過去来院記録に移動） */
-  function renderPatientReservations(card) {
-    var resList = getPatientReservations(card).filter(function(r) { return r.status !== '来院済'; });
-    var container = document.getElementById('pd-res-list');
-    if (!container) return;
-    if (resList.length === 0) {
-      container.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:hsl(214,32%,52%);font-size:13px;">現在の予約はありません</td></tr>';
-      return;
+  /* ⑩ 予約一覧＋過去来院履歴を描画（APIから全件取得→未来/過去に振り分け） */
+  async function renderPatientReservations(card) {
+    var resContainer = document.getElementById('pd-res-list');
+    var pastContainer = document.getElementById('pd-past-list');
+    var p = PATIENT_DATA[card];
+    var uuid = p && p.uuid;
+
+    if (uuid) {
+      try {
+        var res = await fetch('/api/admin/patients/' + uuid + '/reservations');
+        var json = await res.json();
+        if (res.ok && json.reservations) {
+          var now = new Date();
+          /* 今日の日付文字列（YYYY-MM-DD）: 今日以降 = 未来、昨日以前 = 過去 */
+          var todayStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+          var statusMap = { visited: '来院済', unprocessed: '未処理', confirmed: '予約済', cancelled: 'キャンセル' };
+          var dow = ['日','月','火','水','木','金','土'];
+          var futureList = [];
+          var pastList = [];
+
+          /* ガント上の予約データから resId→移動履歴のマップを構築 */
+          var ganttMoveMap = {};
+          [reservations, listDateReservations].forEach(function(resObj) {
+            Object.keys(resObj).forEach(function(key) {
+              var g = resObj[key];
+              if (g && g.resId) {
+                ganttMoveMap[g.resId] = {
+                  doctorPreferred: g.doctorPreferred,
+                  originalDocId: g.originalDocId,
+                  doctorHistory: g.doctorHistory || [],
+                  currentDocId: key.split('_')[0]
+                };
+              }
+            });
+          });
+
+          json.reservations.forEach(function(r) {
+            if (r.status === 'cancelled') return;
+            // ガント上の移動履歴があればマージ
+            var gm = ganttMoveMap[r.id];
+            if (gm && gm.doctorHistory && gm.doctorHistory.length > 0) {
+              r._ganttMove = gm;
+            }
+            // 日付ベースで未来/過去を判定（今日以降=未来、昨日以前=過去）
+            if (r.date >= todayStr) {
+              futureList.push(r);
+            } else {
+              pastList.push(r);
+            }
+          });
+
+          // 予約一覧（未来）: 日付昇順 — 担当医は「{name}希望」/「希望なし」
+          if (resContainer) {
+            if (futureList.length === 0) {
+              resContainer.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:hsl(214,32%,52%);font-size:13px;">現在の予約はありません</td></tr>';
+            } else {
+              var html = '';
+              futureList.forEach(function(r) {
+                var d = new Date(r.date + 'T00:00:00');
+                var dateStr = d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日（' + dow[d.getDay()] + '）';
+                var statusJa = statusMap[r.status] || r.status;
+                /* 担当医ラベル: ポップアップと同じロジック */
+                var docLabel;
+                if (r._ganttMove) {
+                  /* ガント上の移動履歴を使用（buildDoctorDetailLabelと同じロジック） */
+                  var gm = r._ganttMove;
+                  if (!gm.doctorPreferred) {
+                    docLabel = '希望なし';
+                  } else {
+                    var origId = gm.originalDocId || gm.currentDocId;
+                    var hist = gm.doctorHistory || [];
+                    if (hist.length === 0 || hist[hist.length - 1] === origId) {
+                      docLabel = getDocNameById(origId) + ' 希望';
+                    } else {
+                      docLabel = getDocNameById(origId) + ' 希望 → ' + getDocNameById(hist[hist.length - 1]) + ' に変更';
+                    }
+                  }
+                } else if (!r.staffId) {
+                  docLabel = '希望なし';
+                } else if (r.moveCount > 0 && r.movedToStaffId && r.movedToStaffId !== r.staffId) {
+                  docLabel = (r.staffName || r.staffId) + ' 希望 → ' + (r.movedToStaffName || r.movedToStaffId) + ' に変更';
+                } else {
+                  docLabel = (r.staffName || r.staffId) + ' 希望';
+                }
+                html += '<tr>'
+                      + '<td style="white-space:nowrap;font-weight:bold;">' + dateStr + ' ' + r.timeSlot + '</td>'
+                      + '<td><span style="color:#000000;">' + docLabel + '</span></td>'
+                      + '<td style="font-variant-numeric:tabular-nums;">' + r.reservationNumber + '</td>'
+                      + '<td>' + makeStatusBadge(statusJa) + '</td>'
+                      + '<td><button class="btn-cancel-sm" onclick="cancelPatientResAPI(this,\'' + r.id + '\',\'' + card + '\')">予約取消</button></td>'
+                      + '<td></td>'
+                      + '</tr>';
+              });
+              resContainer.innerHTML = html;
+            }
+          }
+
+          // 過去来院履歴: 日付降順（新しい順） — 移動履歴を含む担当医表示
+          if (pastContainer) {
+            pastList.sort(function(a, b) {
+              if (a.date !== b.date) return b.date.localeCompare(a.date);
+              return (b.timeSlot || '').localeCompare(a.timeSlot || '');
+            });
+            if (pastList.length === 0) {
+              pastContainer.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:24px;color:hsl(214,32%,52%);font-size:13px;">過去の来院記録はありません</td></tr>';
+            } else {
+              var html2 = '';
+              pastList.forEach(function(r) {
+                var d = new Date(r.date + 'T00:00:00');
+                var dateStr = d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日（' + dow[d.getDay()] + '）';
+                var statusJa = statusMap[r.status] || r.status;
+                /* 過去来院の担当医ラベル:
+                   移動履歴あり・担当医変更あり → 「{元名} → {actual名} に変更」
+                   それ以外 → actual_staff_id の担当医名のみ */
+                var docLabel;
+                if (r.actualStaffId) {
+                  if (r.staffId && r.actualStaffId !== r.staffId) {
+                    docLabel = (r.staffName || r.staffId) + ' → ' + (r.actualStaffName || r.actualStaffId) + ' に変更';
+                  } else {
+                    docLabel = r.actualStaffName || r.actualStaffId;
+                  }
+                } else if (r._ganttMove) {
+                  var gm = r._ganttMove;
+                  var origId = gm.originalDocId || gm.currentDocId;
+                  var hist = gm.doctorHistory || [];
+                  if (origId && hist.length > 0 && hist[hist.length - 1] !== origId) {
+                    docLabel = getDocNameById(origId) + ' → ' + getDocNameById(hist[hist.length - 1]) + ' に変更';
+                  } else {
+                    docLabel = getDocNameById(gm.currentDocId || origId) || '担当医未記録';
+                  }
+                } else if (r.moveCount > 0 && r.movedToStaffId && r.movedToStaffId !== r.staffId) {
+                  docLabel = (r.staffName || r.staffId) + ' → ' + (r.movedToStaffName || r.movedToStaffId) + ' に変更';
+                } else {
+                  docLabel = '担当医未記録';
+                }
+                html2 += '<tr>'
+                       + '<td style="white-space:nowrap;font-weight:bold;">' + dateStr + ' ' + r.timeSlot + '</td>'
+                       + '<td><span style="color:#000000;">' + docLabel + '</span></td>'
+                       + '<td style="font-variant-numeric:tabular-nums;">' + r.reservationNumber + '</td>'
+                       + '</tr>';
+              });
+              pastContainer.innerHTML = html2;
+            }
+          }
+          return;
+        }
+      } catch(e) {
+        console.error('患者予約一覧の取得に失敗:', e);
+      }
     }
-    var html = '';
-    resList.forEach(function(r) {
-      var docLabel = r.resData ? buildDoctorDetailLabel(r.resData, r.docId) : r.doc.name;
-      html += '<tr>'
-            + '<td style="white-space:nowrap;font-weight:bold;">' + r.dateStr + ' ' + r.time + '</td>'
-            + '<td><span style="color:#000000;">' + docLabel + '</span></td>'
-            + '<td style="font-variant-numeric:tabular-nums;">' + r.bookingId + '</td>'
-            + '<td>' + makeStatusBadge(r.status) + '</td>'
-            + '<td><button class="btn-cancel-sm" onclick="cancelPatientRes(this,\'' + r.key + '\',\'' + r.source + '\')">予約取消</button></td>'
-            + '<td></td>'
-            + '</tr>';
-    });
-    container.innerHTML = html;
+
+    // フォールバック: 従来のメモリ内検索
+    if (resContainer) {
+      var resList = getPatientReservations(card).filter(function(r) { return r.status !== '来院済'; });
+      if (resList.length === 0) {
+        resContainer.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:hsl(214,32%,52%);font-size:13px;">現在の予約はありません</td></tr>';
+      } else {
+        var html = '';
+        resList.forEach(function(r) {
+          var docLabel = r.resData ? buildDoctorDetailLabel(r.resData, r.docId) : r.doc.name;
+          html += '<tr>'
+                + '<td style="white-space:nowrap;font-weight:bold;">' + r.dateStr + ' ' + r.time + '</td>'
+                + '<td><span style="color:#000000;">' + docLabel + '</span></td>'
+                + '<td style="font-variant-numeric:tabular-nums;">' + r.bookingId + '</td>'
+                + '<td>' + makeStatusBadge(r.status) + '</td>'
+                + '<td><button class="btn-cancel-sm" onclick="cancelPatientRes(this,\'' + r.key + '\',\'' + r.source + '\')">予約取消</button></td>'
+                + '<td></td>'
+                + '</tr>';
+        });
+        resContainer.innerHTML = html;
+      }
+    }
   }
 
-  /* 過去来院履歴描画（過去日付のカレンダーデータからも収集） */
+  /* 過去来院履歴描画（renderPatientReservationsで一括処理するためスタブ化） */
   function renderPastVisits(card) {
-    var visits = [];
-    var todayRef = new Date(todayYear, TODAY.getMonth(), todayDate);
-    /* 過去30日分 + 今月・先月をスキャン */
-    var scanStart = new Date(todayRef);
-    scanStart.setDate(scanStart.getDate() - 60);
-    for (var d = new Date(scanStart); d < todayRef; d.setDate(d.getDate() + 1)) {
-      var y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate();
-      var dayRes = generateDayReservations(y, m, day);
-      if (!dayRes) continue;
-      var dow = ['日','月','火','水','木','金','土'];
-      var dateStr = y + '年' + m + '月' + day + '日（' + dow[d.getDay()] + '）';
-      Object.keys(dayRes).forEach(function(k) {
-        var v = dayRes[k];
-        if (v.card === card && v.status === '来院済') {
-          var parts = k.split('_');
-          var docId = parts[0]; var time = parts[1];
-          var doc = DOCTORS.find(function(dd) { return dd.id === docId; }) || { name:'不明' };
-          visits.push({ dateStr: dateStr, sortKey: y * 10000 + m * 100 + day, time: time, doc: doc, docId: docId, resData: v, bookingId: makeBookingId(k) });
-        }
-      });
-    }
-    /* 当日分・選択日分の来院済も追加 */
-    var activeVisits = getPatientReservations(card).filter(function(r) { return r.status === '来院済'; });
-    activeVisits.forEach(function(r) {
-      visits.push({ dateStr: r.dateStr, sortKey: r.sortDate, time: r.time, doc: r.doc, docId: r.docId, resData: r.resData, bookingId: r.bookingId });
-    });
-    /* 並び順設定に従ってソート */
-    var dir = pastVisitOrder === 'desc' ? -1 : 1;
-    visits.sort(function(a, b) { return a.sortKey !== b.sortKey ? (a.sortKey - b.sortKey) * dir : (a.time < b.time ? -1 : 1) * dir; });
+    /* APIモードではrenderPatientReservationsが過去分も描画するため、ここでは何もしない */
+    /* フォールバック時のためにコンテナが空なら初期メッセージを表示 */
     var container = document.getElementById('pd-past-list');
     if (!container) return;
-    if (visits.length === 0) {
+    if (container.innerHTML.trim() === '') {
       container.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:24px;color:hsl(214,32%,52%);font-size:13px;">過去の来院記録はありません</td></tr>';
-      return;
     }
-    var html = '';
-    visits.forEach(function(v) {
-      var docLabel = v.resData ? buildDoctorDetailLabel(v.resData, v.docId) : v.doc.name;
-      html += '<tr>'
-            + '<td style="white-space:nowrap;font-weight:bold;">' + v.dateStr + ' ' + v.time + '</td>'
-            + '<td><span style="color:#000000;">' + docLabel + '</span></td>'
-            + '<td style="font-variant-numeric:tabular-nums;">' + v.bookingId + '</td>'
-            + '<td></td>'
-            + '</tr>';
-    });
-    container.innerHTML = html;
   }
 
   /* 過去来院記録アコーディオン開閉 */
@@ -2265,6 +2412,39 @@
     showToast(name + 'さんの予約をキャンセルしました', '❌');
   }
 
+  /* ⑩ 患者詳細からAPIキャンセル */
+  var pdCancelAPIId = null;
+  var pdCancelAPICard = null;
+  function cancelPatientResAPI(btn, reservationId, card) {
+    pdCancelAPIId = reservationId;
+    pdCancelAPICard = card;
+    document.getElementById('pd-cancel-detail').innerHTML =
+      '<div><span style="color:#888;font-size:12px;">予約ID：</span>' + reservationId.substring(0,8) + '...</div>';
+    document.getElementById('modal-pd-cancel').classList.add('open');
+    // Override confirm to use API
+    document.getElementById('btn-pd-cancel-confirm').onclick = confirmPdCancelAPI;
+  }
+
+  async function confirmPdCancelAPI() {
+    if (!pdCancelAPIId) return;
+    try {
+      var res = await fetch('/api/patient/reservations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reservationId: pdCancelAPIId })
+      });
+      if (res.ok) {
+        showToast('予約をキャンセルしました', '❌');
+        renderPatientReservations(pdCancelAPICard);
+      }
+    } catch(e) { console.error('キャンセル失敗:', e); }
+    closePdCancel();
+    pdCancelAPIId = null;
+    pdCancelAPICard = null;
+    // Restore original confirm handler
+    document.getElementById('btn-pd-cancel-confirm').onclick = confirmPdCancel;
+  }
+
   /* ⑨ 患者検索 */
   function searchPatients() {
     var q = document.getElementById('pl-search').value.trim().toLowerCase();
@@ -2365,7 +2545,7 @@
     document.getElementById('pd-past-toggle').textContent = '▶ 開く';
     document.getElementById('pd-charts-grid').innerHTML = '';
     document.getElementById('pd-res-list').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:hsl(214,32%,52%);font-size:13px;">現在の予約はありません</td></tr>';
-    document.getElementById('pd-past-list').innerHTML = '<tr><td colspan="4" style="text-align:center;padding:24px;color:hsl(214,32%,52%);font-size:13px;">過去の来院記録はありません</td></tr>';
+    document.getElementById('pd-past-list').innerHTML = '<tr><td colspan="3" style="text-align:center;padding:24px;color:hsl(214,32%,52%);font-size:13px;">過去の来院記録はありません</td></tr>';
     document.querySelectorAll('.page').forEach(pg => pg.classList.remove('active'));
     document.getElementById('page-patient-detail').classList.add('active');
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -3872,12 +4052,29 @@
     if (!currentGanttKey) return;
     var activeRes = getActiveReservations();
     var res = activeRes[currentGanttKey]; var name = res.name;
+    var docId = currentGanttKey.split('_')[0]; /* ガント列の担当医slug */
     if (res.status === '来院済') {
       activeRes[currentGanttKey].status = '予約済';
+      /* DB更新: status を confirmed に戻し、actual_staff_id をクリア */
+      if (res.resId) {
+        fetch('/api/admin/reservations/' + res.resId, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'confirmed', actual_staff_id: null })
+        }).catch(function(e) { console.error('来院取消API失敗:', e); });
+      }
       closeDetail(); activeRenderGantt();
       showToast(name + 'さんの来院記録を取り消しました', '↩️');
     } else {
       activeRes[currentGanttKey].status = '来院済';
+      /* DB更新: status を visited に、actual_staff_id にガント列の担当医slugを保存 */
+      if (res.resId) {
+        fetch('/api/admin/reservations/' + res.resId, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'visited', actual_staff_id: docId })
+        }).catch(function(e) { console.error('来院API失敗:', e); });
+      }
       closeDetail(); activeRenderGantt();
       showToast(name + 'さんの来院を記録しました', '✅');
     }
@@ -4318,16 +4515,34 @@
   }
 
   var doctorSchedules = {};
-  DOCTORS.forEach(function(doc) {
-    var sched = {};
-    clinicSettings.workDays.forEach(function(d) {
-      sched[d] = {
-        am: csTimeStr(clinicSettings.amStart) + '〜' + csTimeStr(clinicSettings.amEnd),
-        pm: csTimeStr(clinicSettings.pmStart) + '〜' + csTimeStr(clinicSettings.pmEnd)
-      };
+  function buildDoctorSchedules() {
+    DOCTORS.forEach(function(doc) {
+      if (doctorSchedules[doc.id]) return; // 既に構築済みならスキップ
+      var sched = {};
+      if (doc.id === 'tanaka') {
+        // 田中 誠（院長）: 月〜金 午前+午後、土 午前のみ
+        [1,2,3,4,5].forEach(function(d) { sched[d] = { am: '09:00〜13:00', pm: '16:00〜20:00' }; });
+        sched[6] = { am: '09:00〜13:00' };
+      } else if (doc.id === 'suzuki') {
+        // 鈴木 由美（副院長）: 月水金 午前+午後、火木 午前のみ、土 休み
+        [1,3,5].forEach(function(d) { sched[d] = { am: '09:00〜13:00', pm: '16:00〜20:00' }; });
+        [2,4].forEach(function(d) { sched[d] = { am: '09:00〜13:00' }; });
+      } else if (doc.id === 'sato') {
+        // 佐藤 健: 月〜金 午前10:30〜12:00+午後16:00〜18:00、土 午前のみ
+        [1,2,3,4,5].forEach(function(d) { sched[d] = { am: '10:30〜12:00', pm: '16:00〜18:00' }; });
+        sched[6] = { am: '09:00〜13:00' };
+      } else {
+        (clinicSettings.workDays || [1,2,3,4,5,6]).forEach(function(d) {
+          sched[d] = {
+            am: csTimeStr(clinicSettings.amStart) + '〜' + csTimeStr(clinicSettings.amEnd),
+            pm: csTimeStr(clinicSettings.pmStart) + '〜' + csTimeStr(clinicSettings.pmEnd)
+          };
+        });
+      }
+      doctorSchedules[doc.id] = { schedule: sched, holidays: [], extraWorkDays: [] };
     });
-    doctorSchedules[doc.id] = { schedule: sched, holidays: [], extraWorkDays: [] };
-  });
+  }
+  buildDoctorSchedules();
 
   var csEditing = false;
 
@@ -5221,16 +5436,39 @@ async function loadStaffData() {
         textColor: '#ffffff'
       });
     });
-    // doctorSchedules を再構築
+    // doctorSchedules を担当医ごとの個別スケジュールで構築
     doctorSchedules = {};
     DOCTORS.forEach(doc => {
       const sched = {};
-      (clinicSettings.workDays || [0,1,2,3,4]).forEach(d => {
-        sched[d] = {
-          am: clinicSettings.amStart + '〜' + clinicSettings.amEnd,
-          pm: clinicSettings.pmStart + '〜' + clinicSettings.pmEnd
-        };
-      });
+      if (doc.id === 'tanaka') {
+        // 田中 誠（院長）: 月〜金 午前+午後、土 午前のみ
+        [1,2,3,4,5].forEach(d => {
+          sched[d] = { am: '09:00〜13:00', pm: '16:00〜20:00' };
+        });
+        sched[6] = { am: '09:00〜13:00' };
+      } else if (doc.id === 'suzuki') {
+        // 鈴木 由美（副院長）: 月水金 午前+午後、火木 午前のみ、土 休み
+        [1,3,5].forEach(d => {
+          sched[d] = { am: '09:00〜13:00', pm: '16:00〜20:00' };
+        });
+        [2,4].forEach(d => {
+          sched[d] = { am: '09:00〜13:00' };
+        });
+      } else if (doc.id === 'sato') {
+        // 佐藤 健: 月〜金 午前10:30〜12:00+午後16:00〜18:00、土 午前のみ
+        [1,2,3,4,5].forEach(d => {
+          sched[d] = { am: '10:30〜12:00', pm: '16:00〜18:00' };
+        });
+        sched[6] = { am: '09:00〜13:00' };
+      } else {
+        // その他: 院の基本スケジュール（月〜土）
+        (clinicSettings.workDays || [1,2,3,4,5,6]).forEach(d => {
+          sched[d] = {
+            am: csTimeStr(clinicSettings.amStart) + '〜' + csTimeStr(clinicSettings.amEnd),
+            pm: csTimeStr(clinicSettings.pmStart) + '〜' + csTimeStr(clinicSettings.pmEnd)
+          };
+        });
+      }
       doctorSchedules[doc.id] = { schedule: sched, holidays: [], extraWorkDays: [] };
     });
   } catch (e) {
@@ -5243,16 +5481,48 @@ async function loadReservationData(dateStr) {
     const res = await fetch('/api/admin/reservations?date=' + dateStr);
     const { reservations: data } = await res.json();
     Object.keys(reservations).forEach(function(k) { delete reservations[k]; });
-    data.forEach(function(r) {
+    var statusMap = { visited: '来院済', unprocessed: '未処理', confirmed: '予約済' };
+    // staff_idがある予約を先に配置
+    data.filter(function(r) { return r.staffId; }).forEach(function(r) {
       var key = r.staffId + '_' + r.time.slice(0, 5);
-      var statusMap = { visited: '来院済', unprocessed: '未処理', confirmed: '予約済' };
       reservations[key] = {
+        resId: r.id,
         name: r.patientName,
         card: r.patientId,
         status: statusMap[r.status] || '予約済',
-        doctorPreferred: false,
+        doctorPreferred: true,
+        preferredStaffId: r.staffId,
+        originalDocId: r.staffId,
         doctorHistory: []
       };
+    });
+    // staff_idがnullの予約を空きスロットにランダム割り振り
+    var docIds = DOCTORS.map(function(d) { return d.id; });
+    var seed = 7;
+    data.filter(function(r) { return !r.staffId; }).forEach(function(r) {
+      var time = r.time.slice(0, 5);
+      var shuffled = docIds.slice();
+      for (var i = shuffled.length - 1; i > 0; i--) {
+        var x = Math.sin(seed++) * 10000; x = x - Math.floor(x);
+        var j = Math.floor(x * (i + 1));
+        var tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
+      }
+      for (var k = 0; k < shuffled.length; k++) {
+        var key = shuffled[k] + '_' + time;
+        if (!reservations[key]) {
+          reservations[key] = {
+            resId: r.id,
+            name: r.patientName,
+            card: r.patientId,
+            status: statusMap[r.status] || '予約済',
+            doctorPreferred: false,
+            preferredStaffId: null,
+            originalDocId: null,
+            doctorHistory: []
+          };
+          break;
+        }
+      }
     });
   } catch (e) {
     console.error('予約データの読み込みに失敗しました（モックデータで動作します）', e);
@@ -5266,16 +5536,48 @@ async function loadReservationDataForDate(dateStr) {
     const res = await fetch('/api/admin/reservations?date=' + dateStr);
     const { reservations: data } = await res.json();
     var result = {};
-    data.forEach(function(r) {
+    var statusMap = { visited: '来院済', unprocessed: '未処理', confirmed: '予約済' };
+    // staff_idがある予約を先に配置
+    data.filter(function(r) { return r.staffId; }).forEach(function(r) {
       var key = r.staffId + '_' + r.time.slice(0, 5);
-      var statusMap = { visited: '来院済', unprocessed: '未処理', confirmed: '予約済' };
       result[key] = {
+        resId: r.id,
         name: r.patientName,
         card: r.patientId,
         status: statusMap[r.status] || '予約済',
-        doctorPreferred: false,
+        doctorPreferred: true,
+        preferredStaffId: r.staffId,
+        originalDocId: r.staffId,
         doctorHistory: []
       };
+    });
+    // staff_idがnullの予約を空きスロットにランダム割り振り
+    var docIds = DOCTORS.map(function(d) { return d.id; });
+    var seed = 13;
+    data.filter(function(r) { return !r.staffId; }).forEach(function(r) {
+      var time = r.time.slice(0, 5);
+      var shuffled = docIds.slice();
+      for (var i = shuffled.length - 1; i > 0; i--) {
+        var x = Math.sin(seed++) * 10000; x = x - Math.floor(x);
+        var j = Math.floor(x * (i + 1));
+        var tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
+      }
+      for (var k = 0; k < shuffled.length; k++) {
+        var key = shuffled[k] + '_' + time;
+        if (!result[key]) {
+          result[key] = {
+            resId: r.id,
+            name: r.patientName,
+            card: r.patientId,
+            status: statusMap[r.status] || '予約済',
+            doctorPreferred: false,
+            preferredStaffId: null,
+            originalDocId: null,
+            doctorHistory: []
+          };
+          break;
+        }
+      }
     });
     return result;
   } catch (e) {
@@ -5291,6 +5593,7 @@ async function loadPatientData() {
     Object.keys(PATIENT_DATA).forEach(function(k) { delete PATIENT_DATA[k]; });
     patients.forEach(function(p) {
       PATIENT_DATA[p.card_id] = {
+        uuid: p.id,
         name: p.name,
         kana: p.kana || '',
         dob: p.dob || '',

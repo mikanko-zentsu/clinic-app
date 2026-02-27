@@ -5,12 +5,76 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const date = searchParams.get("date");
   const doctorId = searchParams.get("doctorId");
-
-  if (!date) {
-    return NextResponse.json({ error: "date は必須です" }, { status: 400 });
-  }
+  const cardNumber = searchParams.get("cardNumber");
 
   try {
+    // cardNumber指定: 患者の全予約を返す（checkページ用）
+    if (cardNumber) {
+      let query = supabase
+        .from("reservations")
+        .select("id, patient_card_id, patient_name, date, time_slot, staff_id, status")
+        .eq("patient_card_id", cardNumber)
+        .neq("status", "cancelled")
+        .order("date", { ascending: true })
+        .order("time_slot", { ascending: true });
+
+      if (date) {
+        query = query.eq("date", date);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      // スタッフ名をマッピング
+      const { data: staffList } = await supabase
+        .from("staff")
+        .select("id, slug, name");
+      const staffMap = new Map<string, string>();
+      for (const s of staffList ?? []) {
+        staffMap.set(String(s.id), s.name);
+        if (s.slug) staffMap.set(s.slug, s.name);
+      }
+
+      // 患者名をマスク
+      const { data: patient } = await supabase
+        .from("patients")
+        .select("name")
+        .eq("card_id", cardNumber)
+        .single();
+
+      const maskedName = patient?.name
+        ? patient.name.replace(/^(.).*/, "$1〇〇")
+        : null;
+
+      const statusLabel = (s: string) => {
+        if (s === "visited") return "来院済";
+        if (s === "unprocessed") return "未処理";
+        return "予約済";
+      };
+
+      const reservations = (data ?? []).map((r) => ({
+        id: r.id,
+        reservationNumber: "R" + String(r.id).substring(0, 8),
+        cardNumber: r.patient_card_id,
+        date: r.date,
+        startTime: r.time_slot?.substring(0, 5),
+        doctorId: r.staff_id,
+        doctorName: staffMap.get(String(r.staff_id)) ?? r.staff_id,
+        maskedName,
+        status: r.status,
+        statusLabel: statusLabel(r.status),
+      }));
+
+      return NextResponse.json({ reservations });
+    }
+
+    // date指定: 日付ベースの予約一覧（従来の動作）
+    if (!date) {
+      return NextResponse.json({ error: "date または cardNumber は必須です" }, { status: 400 });
+    }
+
     let query = supabase
       .from("reservations")
       .select("id, patient_card_id, patient_name, time_slot, staff_id, status")
