@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
+const ALL_DOCTOR_IDS = ["tanaka", "suzuki", "sato"];
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const date = searchParams.get("date");
@@ -45,7 +47,7 @@ export async function GET(req: NextRequest) {
         .single();
 
       const maskedName = patient?.name
-        ? patient.name.replace(/^(.).*/, "$1〇〇")
+        ? patient.name.split(" ").map((part) => part.length > 0 ? part[0] + "*".repeat(part.length - 1) : "").join(" ")
         : null;
 
       const statusLabel = (s: string) => {
@@ -111,31 +113,48 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { patientId, patientName, doctorId, date, time } = body;
 
-    if (!patientId || !doctorId || !date || !time) {
+    if (!patientId || !date || !time) {
       return NextResponse.json(
-        { error: "patientId, doctorId, date, time は必須です" },
+        { error: "patientId, date, time は必須です" },
         { status: 400 }
       );
     }
 
-    // 重複チェック：同日・同時間にconfirmedの予約で、actual_staff_idまたはstaff_idが一致するものがあるか
+    // 重複チェック
     const { data: existing, error: checkError } = await supabase
       .from("reservations")
-      .select("id")
+      .select("id, actual_staff_id, staff_id")
       .eq("date", date)
       .eq("time_slot", time)
-      .eq("status", "confirmed")
-      .or(`actual_staff_id.eq.${doctorId},staff_id.eq.${doctorId}`);
+      .eq("status", "confirmed");
 
     if (checkError) {
       return NextResponse.json({ error: checkError.message }, { status: 500 });
     }
 
-    if (existing && existing.length > 0) {
-      return NextResponse.json(
-        { error: "この時間帯はすでに予約が入っています" },
-        { status: 409 }
+    if (doctorId) {
+      // 担当医指定あり：actual_staff_id または staff_id が一致する予約があればエラー
+      const conflict = (existing ?? []).some(
+        (r) => (r.actual_staff_id ?? r.staff_id) === doctorId
       );
+      if (conflict) {
+        return NextResponse.json(
+          { error: "この時間帯はすでに予約が入っています" },
+          { status: 409 }
+        );
+      }
+    } else {
+      // 担当医なし：全医師が埋まっている場合のみエラー
+      const bookedDocs = new Set(
+        (existing ?? []).map((r) => r.actual_staff_id ?? r.staff_id)
+      );
+      const allFull = ALL_DOCTOR_IDS.every((d) => bookedDocs.has(d));
+      if (allFull) {
+        return NextResponse.json(
+          { error: "この時間帯は全ての担当医の予約が埋まっています" },
+          { status: 409 }
+        );
+      }
     }
 
     // 予約を作成

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
@@ -85,5 +87,56 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ reservations, staffCount, newPatients });
   } catch {
     return NextResponse.json({ error: "予約一覧の取得に失敗しました" }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { card_id, staff_slug, date, time_slot, is_preferred } = body;
+
+    if (!card_id || !staff_slug || !date || !time_slot) {
+      return NextResponse.json(
+        { error: "card_id, staff_slug, date, time_slot は必須です" },
+        { status: 400 }
+      );
+    }
+
+    // 患者存在チェック
+    const { data: patient, error: patientError } = await supabase
+      .from("patients")
+      .select("card_id, name")
+      .eq("card_id", card_id)
+      .single();
+
+    if (patientError || !patient) {
+      return NextResponse.json(
+        { error: "該当する患者が見つかりません" },
+        { status: 404 }
+      );
+    }
+
+    // 予約を作成
+    const { data: reservation, error: insertError } = await supabase
+      .from("reservations")
+      .insert({
+        patient_card_id: card_id,
+        patient_name: patient.name,
+        staff_id: is_preferred ? staff_slug : null,
+        actual_staff_id: staff_slug,
+        date,
+        time_slot,
+        status: "confirmed",
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ reservation, patient_name: patient.name }, { status: 201 });
+  } catch {
+    return NextResponse.json({ error: "予約の作成に失敗しました" }, { status: 500 });
   }
 }

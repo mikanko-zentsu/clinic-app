@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { isHoliday } from "@/lib/holidays";
 
 const doctorSchedules: Record<string, {
   workDays: number[];
@@ -42,7 +43,7 @@ const DOC_IDS = ["tanaka", "suzuki", "sato"];
 function getScheduledSlots(doctorId: string, dateStr: string): string[] {
   const dow = new Date(dateStr + "T00:00:00Z").getUTCDay();
   const s = doctorSchedules[doctorId];
-  if (!s || !s.workDays.includes(dow) || dow === 0) return [];
+  if (!s || !s.workDays.includes(dow) || dow === 0 || isHoliday(dateStr)) return [];
 
   if (dow === 6) return [...s.saturdayAM, ...s.saturdayPM];
 
@@ -115,22 +116,25 @@ export async function GET(req: NextRequest) {
     }
 
     // Calculate per-day availability
-    const days: { date: string; available: number; total: number }[] = [];
+    const days: { date: string; available: number; total: number; lastSlot: string | null }[] = [];
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = formatDate(year, month, day);
       const dow = new Date(dateStr + "T00:00:00Z").getUTCDay();
 
-      if (dow === 0) {
-        days.push({ date: dateStr, available: 0, total: 0 });
+      if (dow === 0 || isHoliday(dateStr)) {
+        days.push({ date: dateStr, available: 0, total: 0, lastSlot: null });
         continue;
       }
 
-      // Count total valid doctor-slot pairs
-      let total = 0;
+      // Collect all valid doctor-slot pairs
+      const allSlots: { docId: string; time: string }[] = [];
       for (const docId of targetDocs) {
-        total += getScheduledSlots(docId, dateStr).length;
+        for (const time of getScheduledSlots(docId, dateStr)) {
+          allSlots.push({ docId, time });
+        }
       }
+      const total = allSlots.length;
 
       // Count reserved doctor-slot pairs (deduplicated, only within valid schedule)
       const dateReservations = resByDate.get(dateStr) ?? [];
@@ -145,7 +149,21 @@ export async function GET(req: NextRequest) {
       }
       const reserved = reservedKeys.size;
 
-      days.push({ date: dateStr, available: total - reserved, total });
+      // Find the last slot time that still has availability
+      let lastSlot: string | null = null;
+      const uniqueTimes = [...new Set(allSlots.map((s) => s.time))].sort();
+      for (let i = uniqueTimes.length - 1; i >= 0; i--) {
+        const t = uniqueTimes[i];
+        const hasAvailable = allSlots
+          .filter((s) => s.time === t)
+          .some((s) => !reservedKeys.has(`${s.docId}_${t}`));
+        if (hasAvailable) {
+          lastSlot = t;
+          break;
+        }
+      }
+
+      days.push({ date: dateStr, available: total - reserved, total, lastSlot });
     }
 
     return NextResponse.json({ year, month, days });

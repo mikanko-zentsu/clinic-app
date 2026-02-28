@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { isHoliday } from "@/lib/holidays";
 
 const doctorSchedules: Record<string, {
   workDays: number[];
@@ -42,7 +43,7 @@ const DOC_IDS = ["tanaka", "suzuki", "sato"];
 function getScheduledSlots(doctorId: string, date: string): string[] {
   const dow = new Date(date + "T00:00:00Z").getUTCDay();
   const s = doctorSchedules[doctorId];
-  if (!s || !s.workDays.includes(dow) || dow === 0) return [];
+  if (!s || !s.workDays.includes(dow) || dow === 0 || isHoliday(date)) return [];
 
   if (dow === 6) return [...s.saturdayAM, ...s.saturdayPM];
 
@@ -102,7 +103,7 @@ export async function GET(req: NextRequest) {
     }));
 
     // 4. Determine availability
-    let slots: { time: string; available: boolean }[];
+    let slots: { time: string; available: boolean; availableCount?: number }[];
 
     if (staffId) {
       const bookedSet = new Set(reservations.map((r) => r.time));
@@ -121,11 +122,14 @@ export async function GET(req: NextRequest) {
       }
 
       slots = validSlots.map((slot) => {
-        const available = DOC_IDS.some((d) => {
+        let count = 0;
+        for (const d of DOC_IDS) {
           const dSlots = getScheduledSlots(d, dateParam);
-          return dSlots.includes(slot) && !bookedByDoc.get(d)!.has(slot);
-        });
-        return { time: slot, available };
+          if (dSlots.includes(slot) && !bookedByDoc.get(d)!.has(slot)) {
+            count++;
+          }
+        }
+        return { time: slot, available: count > 0, availableCount: count };
       });
     }
 

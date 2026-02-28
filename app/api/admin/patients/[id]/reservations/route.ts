@@ -10,18 +10,34 @@ export async function GET(
   try {
     const { id } = await params;
 
-    // まず患者のcard_idを取得
-    const { data: patient, error: patientError } = await supabase
-      .from("patients")
-      .select("card_id, name")
-      .eq("id", id)
-      .single();
+    // idカラム（整数/UUID）またはcard_idで患者を検索
+    // 先頭が0でない数字列 or UUID形式 → idカラムで検索（"35", "a1b2c3d4-..."）
+    // 先頭が0の数字列 → card_idで検索（"00001"）
+    const looksLikeId = /^[1-9]\d*$/.test(id) || /^[0-9a-f]{8}-/i.test(id);
 
-    if (patientError || !patient) {
+    let patient: any = null;
+    if (looksLikeId) {
+      const { data } = await supabase
+        .from("patients")
+        .select("card_id, name")
+        .eq("id", id)
+        .single();
+      patient = data;
+    }
+    if (!patient) {
+      const { data } = await supabase
+        .from("patients")
+        .select("card_id, name")
+        .eq("card_id", id)
+        .single();
+      patient = data;
+    }
+
+    if (!patient) {
       return NextResponse.json({ error: "患者が見つかりません" }, { status: 404 });
     }
 
-    // card_idに紐づく全予約を取得（2026年3月末まで）
+    // card_idに紐づく全予約を取得
     // actual_staff_idカラムが存在しない場合にも対応
     let data: any[] | null = null;
     let hasActualStaff = true;
@@ -30,7 +46,6 @@ export async function GET(
         .from("reservations")
         .select("id, date, time_slot, staff_id, actual_staff_id, status, patient_name")
         .eq("patient_card_id", patient.card_id)
-        .lte("date", "2026-03-31")
         .order("date", { ascending: true })
         .order("time_slot", { ascending: true });
       if (res.error) {
@@ -40,7 +55,6 @@ export async function GET(
           .from("reservations")
           .select("id, date, time_slot, staff_id, status, patient_name")
           .eq("patient_card_id", patient.card_id)
-          .lte("date", "2026-03-31")
           .order("date", { ascending: true })
           .order("time_slot", { ascending: true });
         if (res2.error) {

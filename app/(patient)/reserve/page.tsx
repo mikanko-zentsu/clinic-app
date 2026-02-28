@@ -17,6 +17,7 @@ type Step = "doctor" | "calendar" | "time" | "card" | "confirm" | "complete";
 interface Slot {
   time: string;
   available: boolean;
+  availableCount?: number;
 }
 
 interface SlotsResponse {
@@ -347,6 +348,9 @@ function ReserveContent() {
                       >
                         <span className={`text-lg font-bold ${slot.available ? "text-[hsl(222_47%_11%)]" : "text-slate-400"}`}>{slot.time}</span>
                         {!slot.available && <Badge variant="muted" className="mt-1">満</Badge>}
+                        {slot.available && !selectedDoctor && slot.availableCount !== undefined && (
+                          <span className="text-xs font-semibold text-sky-600 mt-0.5">残{slot.availableCount}</span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -373,6 +377,9 @@ function ReserveContent() {
                       >
                         <span className={`text-lg font-bold ${slot.available ? "text-[hsl(222_47%_11%)]" : "text-slate-400"}`}>{slot.time}</span>
                         {!slot.available && <Badge variant="muted" className="mt-1">満</Badge>}
+                        {slot.available && !selectedDoctor && slot.availableCount !== undefined && (
+                          <span className="text-xs font-semibold text-sky-600 mt-0.5">残{slot.availableCount}</span>
+                        )}
                       </button>
                     ))}
                   </div>

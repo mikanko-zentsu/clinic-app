@@ -7,20 +7,52 @@ import { PageLayout } from "@/components/ui/page-layout";
 import { NumPad } from "@/components/numpad";
 import { ChevronLeft, Trash2 } from "lucide-react";
 
+interface ApiReservation {
+  id: string;
+  reservationNumber: string;
+  date: string;
+  timeSlot: string;
+  staffId: string | null;
+  staffName: string | null;
+  actualStaffId: string | null;
+  actualStaffName: string | null;
+  status: string;
+  movedToStaffId: string | null;
+  movedToStaffName: string | null;
+  moveCount: number;
+}
+
 interface Reservation {
   id: string;
   reservationNumber: string;
-  cardNumber: string;
   date: string;
   startTime: string;
   doctorId: string | null;
-  doctorName: string | null;
-  maskedName: string | null;
+  doctorLabel: string;
+  patientName: string | null;
   status: string;
   statusLabel: string;
 }
 
 type ViewState = "input" | "result";
+
+function buildDoctorLabel(r: ApiReservation): string {
+  if (!r.staffId) return "希望なし";
+  if (r.moveCount > 0 && r.movedToStaffId && r.movedToStaffId !== r.staffId) {
+    return `${r.staffName || r.staffId} 希望 → ${r.movedToStaffName || r.movedToStaffId} に変更`;
+  }
+  if (r.actualStaffId && r.actualStaffId !== r.staffId) {
+    return `${r.staffName || r.staffId} 希望 → ${r.actualStaffName || r.actualStaffId} に変更`;
+  }
+  return `${r.staffName || r.staffId} 希望`;
+}
+
+function maskName(name: string): string {
+  return name
+    .split(" ")
+    .map((part) => (part.length > 0 ? part[0] + "*".repeat(part.length - 1) : ""))
+    .join(" ");
+}
 
 export default function CheckPage() {
   const router = useRouter();
@@ -38,6 +70,12 @@ export default function CheckPage() {
     return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日（${weekdays[d.getDay()]}）`;
   };
 
+  const statusLabel = (s: string) => {
+    if (s === "visited") return "来院済";
+    if (s === "unprocessed") return "未処理";
+    return "予約済";
+  };
+
   const handleSearch = async () => {
     if (!cardNumber) {
       setError("診察券番号を入力してください");
@@ -46,21 +84,33 @@ export default function CheckPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/patient/reservations?cardNumber=${cardNumber}`);
+      const res = await fetch(`/api/admin/patients/${cardNumber}/reservations`);
       const data = await res.json();
       if (!res.ok) {
-        setError("予約情報の取得に失敗しました");
+        setError(data.error || "予約情報の取得に失敗しました");
         return;
       }
+      const patientName = data.patient?.name ? maskName(data.patient.name) : null;
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const filtered = (data.reservations as Reservation[])
-        .filter((r) => new Date(r.date + "T00:00:00") >= today)
+      const filtered = (data.reservations as ApiReservation[])
+        .filter((r) => r.status !== "cancelled" && new Date(r.date + "T00:00:00") >= today)
         .sort((a, b) => {
           const cmp = a.date.localeCompare(b.date);
           if (cmp !== 0) return cmp;
-          return a.startTime.localeCompare(b.startTime);
-        });
+          return (a.timeSlot || "").localeCompare(b.timeSlot || "");
+        })
+        .map((r) => ({
+          id: r.id,
+          reservationNumber: r.reservationNumber,
+          date: r.date,
+          startTime: r.timeSlot,
+          doctorId: r.staffId,
+          doctorLabel: buildDoctorLabel(r),
+          patientName,
+          status: r.status,
+          statusLabel: statusLabel(r.status),
+        }));
       setReservations(filtered);
       setView("result");
     } catch {
@@ -136,36 +186,24 @@ export default function CheckPage() {
                 className="rounded-xl bg-[hsl(210_40%_98%)] border border-[hsl(214_32%_91%)] divide-y divide-[hsl(214_32%_91%)]"
               >
                 <div className="flex items-center px-5 py-3">
-                  <span className="w-28 text-sm font-semibold text-slate-500 flex-shrink-0">予約番号</span>
-                  <span className="text-sky-600 font-black text-xl tracking-wider">{r.reservationNumber}</span>
-                </div>
-                {r.maskedName && (
-                  <div className="flex items-center px-5 py-3">
-                    <span className="w-28 text-sm font-semibold text-slate-500 flex-shrink-0">お名前</span>
-                    <span className="text-[hsl(222_47%_11%)] font-bold">{r.maskedName}</span>
-                  </div>
-                )}
-                {r.doctorName && (
-                  <div className="flex items-center px-5 py-3">
-                    <span className="w-28 text-sm font-semibold text-slate-500 flex-shrink-0">担当医</span>
-                    <span className="text-[hsl(222_47%_11%)] font-bold">{r.doctorName}</span>
-                  </div>
-                )}
-                <div className="flex items-center px-5 py-3">
                   <span className="w-28 text-sm font-semibold text-slate-500 flex-shrink-0">予約日時</span>
                   <span className="text-[hsl(222_47%_11%)] font-bold">
                     {formatDate(r.date)}　{r.startTime}〜
                   </span>
                 </div>
                 <div className="flex items-center px-5 py-3">
-                  <span className="w-28 text-sm font-semibold text-slate-500 flex-shrink-0">ステータス</span>
-                  <span className={`font-bold ${
-                    r.status === "visited" ? "text-green-600" :
-                    r.status === "unprocessed" ? "text-amber-600" :
-                    "text-sky-600"
-                  }`}>
-                    {r.statusLabel}
-                  </span>
+                  <span className="w-28 text-sm font-semibold text-slate-500 flex-shrink-0">担当医</span>
+                  <span className="text-[hsl(222_47%_11%)] font-bold">{r.doctorLabel}</span>
+                </div>
+                {r.patientName && (
+                  <div className="flex items-center px-5 py-3">
+                    <span className="w-28 text-sm font-semibold text-slate-500 flex-shrink-0">お名前</span>
+                    <span className="text-[hsl(222_47%_11%)] font-bold">{r.patientName}</span>
+                  </div>
+                )}
+                <div className="flex items-center px-5 py-3">
+                  <span className="w-28 text-sm font-semibold text-slate-500 flex-shrink-0">予約番号</span>
+                  <span className="text-sky-600 font-black text-xl tracking-wider">{r.reservationNumber}</span>
                 </div>
                 {r.status === "confirmed" && (
                 <div className="px-5 py-3">
@@ -204,14 +242,20 @@ export default function CheckPage() {
 
             <div className="rounded-xl bg-[hsl(210_40%_98%)] border border-[hsl(214_32%_91%)] divide-y divide-[hsl(214_32%_91%)] mb-6">
               <div className="flex items-center px-4 py-3">
-                <span className="w-24 text-sm font-semibold text-slate-500 flex-shrink-0">予約番号</span>
-                <span className="text-sky-600 font-black text-lg tracking-wider">{confirmTarget.reservationNumber}</span>
-              </div>
-              <div className="flex items-center px-4 py-3">
-                <span className="w-24 text-sm font-semibold text-slate-500 flex-shrink-0">予約日時</span>
+                <span className="w-24 text-sm font-semibold text-slate-500 flex-shrink-0">日時</span>
                 <span className="text-[hsl(222_47%_11%)] font-bold">
                   {formatDate(confirmTarget.date)}　{confirmTarget.startTime}〜
                 </span>
+              </div>
+              <div className="flex items-center px-4 py-3">
+                <span className="w-24 text-sm font-semibold text-slate-500 flex-shrink-0">担当医</span>
+                <span className="text-[hsl(222_47%_11%)] font-bold">
+                  {confirmTarget.doctorLabel}
+                </span>
+              </div>
+              <div className="flex items-center px-4 py-3">
+                <span className="w-24 text-sm font-semibold text-slate-500 flex-shrink-0">予約番号</span>
+                <span className="text-sky-600 font-black text-lg tracking-wider">{confirmTarget.reservationNumber}</span>
               </div>
             </div>
 

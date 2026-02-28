@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { isHoliday } from "@/lib/holidays";
 
 const MORNING_SLOTS = 13; // 09:00〜12:40（13枠）
 const AFTERNOON_SLOTS = 12; // 16:00〜19:40（12枠）※19:40含む
@@ -67,7 +68,7 @@ export async function GET(req: NextRequest) {
     const dayOfWeek = date.getDay();
 
     // 日曜休診
-    if (dayOfWeek === 0) {
+    if (dayOfWeek === 0 || isHoliday(dateStr)) {
       days.push({ date: dateStr, status: "closed", reason: "定休日" });
       continue;
     }

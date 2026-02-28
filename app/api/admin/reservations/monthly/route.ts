@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { isHoliday } from "@/lib/holidays";
 
 const SLOTS_PER_STAFF = 25; // 午前13枠 + 午後12枠
 
@@ -69,7 +70,7 @@ export async function GET(req: NextRequest) {
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = formatDate(year, month, d);
       const dow = new Date(year, month - 1, d).getDay();
-      if (dow === 0) {
+      if (dow === 0 || isHoliday(dateStr)) {
         days.push({ date: dateStr, closed: true, booked: 0, total: 0 });
         continue;
       }

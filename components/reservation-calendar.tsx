@@ -10,6 +10,7 @@ interface DayCount {
   date: string;
   available: number;
   total: number;
+  lastSlot: string | null;
 }
 
 interface ReservationCalendarProps {
@@ -170,8 +171,18 @@ export function ReservationCalendar({ onSelectDate, doctorId, hideCount }: Reser
             const isSelected = selectedDate === dateStr;
             const dayOfWeek = (date.getDay() + 6) % 7; // 0=Mon, 5=Sat, 6=Sun
 
+            // 今日の場合、最終予約可能枠を過ぎているか判定
+            const isToday = dateStr === formatYYYYMMDD(today);
+            let isExpired = false;
+            if (isToday && info && info.lastSlot) {
+              const now = new Date();
+              const [h, m] = info.lastSlot.split(":").map(Number);
+              const lastSlotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
+              isExpired = now >= lastSlotTime;
+            }
+
             const isClosed = !info || info.total === 0;
-            const isFull = !isClosed && info.available <= 0;
+            const isFull = !isClosed && (info.available <= 0 || isExpired);
             const isFew = !isClosed && !isFull && info.available <= 3;
             const isAvailable = !isClosed && !isFull && !isFew;
             const isDisabled = isPast || isClosed || isFull;
@@ -190,7 +201,7 @@ export function ReservationCalendar({ onSelectDate, doctorId, hideCount }: Reser
                   isDisabled
                     ? "cursor-not-allowed"
                     : "cursor-pointer hover:bg-slate-50 active:scale-95",
-                  isPast
+                  isPast || isExpired
                     ? "bg-slate-100 opacity-60"
                     : isClosed
                     ? "bg-slate-100"
@@ -227,7 +238,12 @@ export function ReservationCalendar({ onSelectDate, doctorId, hideCount }: Reser
                     休診
                   </Badge>
                 )}
-                {!isPast && isFull && (
+                {!isPast && isFull && isExpired && (
+                  <Badge variant="muted" className="mt-1 text-xs px-1 py-0 text-slate-400">
+                    不可
+                  </Badge>
+                )}
+                {!isPast && isFull && !isExpired && (
                   <Badge variant="danger" className="mt-1 text-xs px-1 py-0">
                     満
                   </Badge>

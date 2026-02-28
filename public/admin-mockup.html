@@ -674,7 +674,7 @@
   <header class="topbar">
     <span class="topbar-title" id="page-title">ダッシュボード</span>
     <div class="topbar-right">
-      <span class="date-badge" id="topbar-date"></span>
+      <span id="topbar-date" style="font-size:15px; font-weight:700; color:#000;"></span>
       <div class="user-avatar">管</div>
     </div>
   </header>
@@ -1076,6 +1076,10 @@
     <input class="modal-input" id="b-card" type="tel" inputmode="numeric" placeholder="例：00001"
            maxlength="10" oninput="clearBookingError()" onkeydown="if(event.key==='Enter')confirmBooking()">
     <div class="input-error" id="b-error"></div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px;cursor:pointer;user-select:none;">
+      <input type="checkbox" id="b-preferred" checked style="width:18px;height:18px;accent-color:hsl(142,71%,32%);">
+      この担当医を希望する
+    </label>
     <div id="b-patient-name" style="display:none;margin-top:8px;padding:10px 14px;background:hsl(142,71%,96%);border:1px solid hsl(142,71%,78%);border-radius:10px;font-size:14px;font-weight:700;color:hsl(142,55%,28%);">
       <span style="font-size:11px;font-weight:600;color:hsl(142,55%,40%);display:block;margin-bottom:2px;">患者名</span>
       <span id="b-patient-name-text"></span>
@@ -1481,7 +1485,7 @@
     dragTargetKey = null;
   }
 
-  function executeDragMove() {
+  async function executeDragMove() {
     if (!dragSourceKey || !dragTargetKey) return;
     var activeRes = getActiveReservations();
     var src = activeRes[dragSourceKey];
@@ -1505,19 +1509,32 @@
     }
     /* 移動APIを呼び出し */
     if (src.resId) {
-      fetch('/api/admin/reservations/move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reservationId: src.resId,
-          fromDate: moveDate,
-          fromTime: srcTime + ':00',
-          fromStaffId: srcDocId,
-          toDate: moveDate,
-          toTime: tgtTime + ':00',
-          toStaffId: tgtDocId
-        })
-      }).catch(function(e) { console.error('移動API呼び出しに失敗:', e); });
+      try {
+        var apiRes = await fetch('/api/admin/reservations/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reservationId: src.resId,
+            fromDate: moveDate,
+            fromTime: srcTime + ':00',
+            fromStaffId: srcDocId,
+            toDate: moveDate,
+            toTime: tgtTime + ':00',
+            toStaffId: tgtDocId
+          })
+        });
+        if (!apiRes.ok) {
+          var errData = await apiRes.json().catch(function() { return {}; });
+          closeMoveConfirm();
+          showToast(errData.error || '予約の移動に失敗しました', '❌');
+          return;
+        }
+      } catch (e) {
+        console.error('移動API呼び出しに失敗:', e);
+        closeMoveConfirm();
+        showToast('通信エラー: 予約の移動に失敗しました', '❌');
+        return;
+      }
     }
     activeRes[dragTargetKey] = { name: src.name, card: src.card, status: src.status, resId: src.resId, doctorPreferred: src.doctorPreferred, doctorHistory: newHistory, originalDocId: origDocId, preferredStaffId: src.preferredStaffId };
     delete activeRes[dragSourceKey];
@@ -2177,6 +2194,8 @@
                 } else {
                   docLabel = (r.staffName || r.staffId) + ' 希望';
                 }
+                // キャンセルモーダル用にデータを保存
+                pdCancelAPIDataMap[r.id] = { dateStr: dateStr, timeSlot: r.timeSlot, docLabel: docLabel, resNumber: r.reservationNumber };
                 html += '<tr>'
                       + '<td style="white-space:nowrap;font-weight:bold;">' + dateStr + ' ' + r.timeSlot + '</td>'
                       + '<td><span style="color:#000000;">' + docLabel + '</span></td>'
@@ -2493,11 +2512,20 @@
   /* ⑩ 患者詳細からAPIキャンセル */
   var pdCancelAPIId = null;
   var pdCancelAPICard = null;
+  var pdCancelAPIDataMap = {};
   function cancelPatientResAPI(btn, reservationId, card) {
     pdCancelAPIId = reservationId;
     pdCancelAPICard = card;
-    document.getElementById('pd-cancel-detail').innerHTML =
-      '<div><span style="color:#888;font-size:12px;">予約ID：</span>' + reservationId.substring(0,8) + '...</div>';
+    var info = pdCancelAPIDataMap[reservationId];
+    if (info) {
+      document.getElementById('pd-cancel-detail').innerHTML =
+        '<div><span style="color:#888;font-size:12px;">日時：</span>' + info.dateStr + ' ' + info.timeSlot + '</div>'
+        + '<div><span style="color:#888;font-size:12px;">担当医：</span>' + info.docLabel + '</div>'
+        + '<div><span style="color:#888;font-size:12px;">予約番号：</span>' + info.resNumber + '</div>';
+    } else {
+      document.getElementById('pd-cancel-detail').innerHTML =
+        '<div><span style="color:#888;font-size:12px;">予約番号：</span>' + reservationId.substring(0,8) + '...</div>';
+    }
     document.getElementById('modal-pd-cancel').classList.add('open');
     // Override confirm to use API
     document.getElementById('btn-pd-cancel-confirm').onclick = confirmPdCancelAPI;
@@ -2656,8 +2684,12 @@
       document.getElementById('pl-search').value = '';
       searchPatients();
     }
-    /* ダッシュボード表示時にフォントサイズを再計算（非表示中に壊れた値を修復） */
+    /* ダッシュボード表示時にデータを再取得してフォントサイズを再計算 */
     if (id === 'dashboard') {
+      loadReservationData(todayISO).then(function() {
+        renderGantt();
+        updateRefreshIndicator();
+      }).catch(function() {});
       autoFitCellNames();
     }
     /* 診療カレンダー表示時にレンダリング */
@@ -3146,7 +3178,7 @@
     currentGanttKey = null; cancelStep = 0; purgeStep = 0;
   }
 
-  function handleCancel() {
+  async function handleCancel() {
     if (cancelStep === 0) {
       document.getElementById('cancel-confirm-view').classList.add('show');
       const btn = document.getElementById('btn-cancel');
@@ -3155,8 +3187,34 @@
       cancelStep = 1;
     } else {
       if (!currentGanttKey) return;
-      const name = reservations[currentGanttKey].name;
-      reservations[currentGanttKey].status = 'キャンセル'; /* ④ → appears as empty */
+      const res = reservations[currentGanttKey];
+      if (!res) return;
+      const name = res.name;
+
+      // DB予約の場合はAPIでキャンセル
+      if (res.resId) {
+        const btn = document.getElementById('btn-cancel');
+        btn.disabled = true; btn.textContent = '取消中...';
+        try {
+          const apiRes = await fetch('/api/admin/reservations/' + res.resId, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'cancelled' })
+          });
+          if (!apiRes.ok) {
+            const errData = await apiRes.json();
+            showToast(errData.error || '取消に失敗しました', '⚠️');
+            btn.disabled = false; btn.textContent = '本当に取り消す';
+            return;
+          }
+        } catch(e) {
+          showToast('通信エラー：取消に失敗しました', '⚠️');
+          btn.disabled = false; btn.textContent = '本当に取り消す';
+          return;
+        }
+      }
+
+      reservations[currentGanttKey].status = 'キャンセル';
       var parts = currentGanttKey.split('_');
       var docId = parts[0];
       var timeStr = parts[1];
@@ -3224,6 +3282,12 @@
       '<span style="font-weight:700;color:#000000;">' + doc.name + '</span>';
     document.getElementById('b-card').value = '';
     document.getElementById('b-error').textContent = '';
+    document.getElementById('b-preferred').checked = true;
+    document.getElementById('b-patient-name').style.display = 'none';
+    document.getElementById('booking-confirm-view').classList.remove('show');
+    var btn = document.getElementById('btn-confirm-booking');
+    btn.textContent = '確認'; btn.style.background = ''; btn.disabled = false;
+    bookingStep = 0;
     document.getElementById('modal-booking').classList.add('open');
     setTimeout(function() { document.getElementById('b-card').focus(); }, 220);
   }
@@ -3407,7 +3471,7 @@
     }
   }
 
-  function confirmBooking() {
+  async function confirmBooking() {
     const card = document.getElementById('b-card').value.trim();
     if (!card || !/^\d{4,}$/.test(card)) {
       document.getElementById('b-error').textContent = '診察券番号を4桁以上の数字で入力してください';
@@ -3415,26 +3479,70 @@
     }
     if (!currentBookingKey) return;
 
+    const btn = document.getElementById('btn-confirm-booking');
+
     if (bookingStep === 0) {
-      /* ステップ1：患者名・確認ビューを表示してボタンを「確定」に変える */
-      const previewName = PATIENT_DATA[card] ? PATIENT_DATA[card].name : dummyNames[parseInt(card.slice(-1)) % dummyNames.length];
-      document.getElementById('b-patient-name-text').textContent = previewName;
-      document.getElementById('b-patient-name').style.display = 'block';
-      document.getElementById('booking-confirm-view').classList.add('show');
-      const btn = document.getElementById('btn-confirm-booking');
-      btn.textContent = '確定';
-      btn.style.background = 'hsl(142,71%,32%)';
-      bookingStep = 1;
+      /* ステップ1：APIで患者を確認 */
+      btn.disabled = true; btn.textContent = '確認中...';
+      try {
+        const res = await fetch('/api/admin/patients?search=' + encodeURIComponent(card));
+        const data = await res.json();
+        const patient = (data.patients || []).find(function(p) { return p.card_id === card; });
+        if (!patient) {
+          document.getElementById('b-error').textContent = '該当する患者が見つかりません（診察券番号: ' + card + '）';
+          btn.disabled = false; btn.textContent = '確認';
+          return;
+        }
+        document.getElementById('b-patient-name-text').textContent = patient.name;
+        document.getElementById('b-patient-name').style.display = 'block';
+        document.getElementById('booking-confirm-view').classList.add('show');
+        btn.textContent = '確定';
+        btn.style.background = 'hsl(142,71%,32%)';
+        btn.disabled = false;
+        bookingStep = 1;
+      } catch(e) {
+        document.getElementById('b-error').textContent = '患者情報の取得に失敗しました';
+        btn.disabled = false; btn.textContent = '確認';
+      }
     } else {
-      /* ステップ2：予約を実行 */
-      const name = PATIENT_DATA[card] ? PATIENT_DATA[card].name : dummyNames[parseInt(card.slice(-1)) % dummyNames.length];
-      const time = currentBookingKey.split('_')[1];
-      reservations[currentBookingKey] = { name, card, status: '予約済' };
-      closeBooking();
-      renderGantt();
-      showToast(`${time} に ${name}さんの予約を追加しました`);
-      /* ⑧ 予約確定後、患者情報詳細へ自動遷移 */
-      openPatientDetail(card, 'dashboard');
+      /* ステップ2：APIで予約をDBに保存 */
+      btn.disabled = true; btn.textContent = '登録中...';
+      const parts = currentBookingKey.split('_');
+      const docId = parts[0];
+      const time = parts[1];
+      const isPreferred = document.getElementById('b-preferred').checked;
+      const dateISO = (ganttContext === 'list' && rlSelectedDate)
+        ? rlSelectedDate.year + '-' + String(rlSelectedDate.month).padStart(2,'0') + '-' + String(rlSelectedDate.day).padStart(2,'0')
+        : todayISO;
+      try {
+        const res = await fetch('/api/admin/reservations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            card_id: card,
+            staff_slug: docId,
+            date: dateISO,
+            time_slot: time,
+            is_preferred: isPreferred
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          document.getElementById('b-error').textContent = data.error || '予約の登録に失敗しました';
+          btn.disabled = false; btn.textContent = '確定';
+          return;
+        }
+        const name = data.patient_name || card;
+        const resId = data.reservation ? data.reservation.id : null;
+        reservations[currentBookingKey] = { name: name, card: card, status: '予約済', resId: resId };
+        closeBooking();
+        renderGantt();
+        showToast(time + ' に ' + name + 'さんの予約を追加しました');
+        openPatientDetail(card, 'dashboard');
+      } catch(e) {
+        document.getElementById('b-error').textContent = '予約の登録に失敗しました';
+        btn.disabled = false; btn.textContent = '確定';
+      }
     }
   }
 
@@ -3495,7 +3603,7 @@
 
   function generateDayReservations(year, month, day) {
     var dayOfWeek = new Date(year, month - 1, day).getDay();
-    if (dayOfWeek === 0) return null;
+    if (dayOfWeek === 0 || isHoliday(year, month, day)) return null;
     if (year === todayYear && month === todayMonth && day === todayDate) {
       var clone = {};
       Object.keys(reservations).forEach(function(k) { clone[k] = Object.assign({}, reservations[k]); });
@@ -3588,7 +3696,7 @@
     for (var d = 1; d <= daysInMonth; d++) {
       var dateStr = year + '-' + String(month).padStart(2, '0') + '-' + String(d).padStart(2, '0');
       var dow = new Date(year, month - 1, d).getDay();
-      if (dow === 0) {
+      if (dow === 0 || isHoliday(year, month, d)) {
         days[d] = { closed: true, booked: 0, total: 0 };
         continue;
       }
@@ -3680,8 +3788,9 @@
     for (var d = 1; d <= daysInMonth; d++) {
       var dow = getDayOfWeek(year, month, d);
       var dayInfo = daysData ? daysData[d] : null;
-      var isClosed = dow === 0 || (dayInfo && dayInfo.closed);
-      var loading = !daysData && dow !== 0;
+      var isHol = !!isHoliday(year, month, d);
+      var isClosed = dow === 0 || isHol || (dayInfo && dayInfo.closed);
+      var loading = !daysData && !isClosed;
       var booked = dayInfo ? dayInfo.booked : 0;
       var total = dayInfo ? dayInfo.total : 0;
       var isToday = (year === todayYear && month === todayMonth && d === todayDate);
@@ -3881,7 +3990,9 @@
   }
 
   function rlIsClosedDay(dt) {
-    return dt.getDay() === 0;
+    if (dt.getDay() === 0) return true;
+    var key = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+    return !!HOLIDAYS_2026[key];
   }
   function rlPrevDay() {
     var y = rlSelectedDate.year, m = rlSelectedDate.month, d = rlSelectedDate.day;
@@ -4165,7 +4276,7 @@
     }
   };
 
-  handleCancel = function() {
+  handleCancel = async function() {
     if (cancelStep === 0) {
       document.getElementById('cancel-confirm-view').classList.add('show');
       var btn = document.getElementById('btn-cancel');
@@ -4174,8 +4285,34 @@
     } else {
       if (!currentGanttKey) return;
       var activeRes = getActiveReservations();
-      var name = activeRes[currentGanttKey].name;
-      var card = activeRes[currentGanttKey].card;
+      var res = activeRes[currentGanttKey];
+      if (!res) return;
+      var name = res.name;
+      var card = res.card;
+
+      // DB予約の場合はAPIでキャンセル
+      if (res.resId) {
+        var btn = document.getElementById('btn-cancel');
+        btn.disabled = true; btn.textContent = '取消中...';
+        try {
+          var apiRes = await fetch('/api/admin/reservations/' + res.resId, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'cancelled' })
+          });
+          if (!apiRes.ok) {
+            var errData = await apiRes.json();
+            showToast(errData.error || '取消に失敗しました', '⚠️');
+            btn.disabled = false; btn.textContent = '本当に取り消す';
+            return;
+          }
+        } catch(e) {
+          showToast('通信エラー：取消に失敗しました', '⚠️');
+          btn.disabled = false; btn.textContent = '本当に取り消す';
+          return;
+        }
+      }
+
       activeRes[currentGanttKey].status = 'キャンセル';
       var _parts = currentGanttKey.split('_');
       autoStopIfNeeded(_parts[0], _parts[1]);
@@ -4322,36 +4459,82 @@
       '<span style="font-weight:700;color:#000000;">' + doc.name + '</span>';
     document.getElementById('b-card').value = '';
     document.getElementById('b-error').textContent = '';
+    document.getElementById('b-preferred').checked = true;
     document.getElementById('b-patient-name').style.display = 'none';
     document.getElementById('booking-confirm-view').classList.remove('show');
     var btn = document.getElementById('btn-confirm-booking');
-    btn.textContent = '確認'; btn.style.background = '';
+    btn.textContent = '確認'; btn.style.background = ''; btn.disabled = false;
     bookingStep = 0;
     document.getElementById('modal-booking').classList.add('open');
     setTimeout(function() { document.getElementById('b-card').focus(); }, 220);
   };
 
-  confirmBooking = function() {
+  confirmBooking = async function() {
     var card = document.getElementById('b-card').value.trim();
     if (!card || !/^\d{4,}$/.test(card)) {
       document.getElementById('b-error').textContent = '診察券番号を4桁以上の数字で入力してください'; return;
     }
     if (!currentBookingKey) return;
+    var btn = document.getElementById('btn-confirm-booking');
+
     if (bookingStep === 0) {
-      var previewName = PATIENT_DATA[card] ? PATIENT_DATA[card].name : dummyNames[parseInt(card.slice(-1)) % dummyNames.length];
-      document.getElementById('b-patient-name-text').textContent = previewName;
-      document.getElementById('b-patient-name').style.display = 'block';
-      document.getElementById('booking-confirm-view').classList.add('show');
-      var btn = document.getElementById('btn-confirm-booking');
-      btn.textContent = '確定'; btn.style.background = 'hsl(142,71%,32%)';
-      bookingStep = 1;
+      /* ステップ1：APIで患者を確認 */
+      btn.disabled = true; btn.textContent = '確認中...';
+      try {
+        var res = await fetch('/api/admin/patients?search=' + encodeURIComponent(card));
+        var data = await res.json();
+        var patient = (data.patients || []).find(function(p) { return p.card_id === card; });
+        if (!patient) {
+          document.getElementById('b-error').textContent = '該当する患者が見つかりません（診察券番号: ' + card + '）';
+          btn.disabled = false; btn.textContent = '確認'; return;
+        }
+        document.getElementById('b-patient-name-text').textContent = patient.name;
+        document.getElementById('b-patient-name').style.display = 'block';
+        document.getElementById('booking-confirm-view').classList.add('show');
+        btn.textContent = '確定'; btn.style.background = 'hsl(142,71%,32%)';
+        btn.disabled = false;
+        bookingStep = 1;
+      } catch(e) {
+        document.getElementById('b-error').textContent = '患者情報の取得に失敗しました';
+        btn.disabled = false; btn.textContent = '確認';
+      }
     } else {
-      var name = PATIENT_DATA[card] ? PATIENT_DATA[card].name : dummyNames[parseInt(card.slice(-1)) % dummyNames.length];
-      var time = currentBookingKey.split('_')[1];
-      getActiveReservations()[currentBookingKey] = { name: name, card: card, status: '予約済', doctorPreferred: false, doctorHistory: [] };
-      closeBooking(); activeRenderGantt();
-      showToast(time + ' に ' + name + 'さんの予約を追加しました');
-      openPatientDetail(card, ganttContext === 'list' ? 'list' : 'dashboard');
+      /* ステップ2：APIで予約をDBに保存 */
+      btn.disabled = true; btn.textContent = '登録中...';
+      var parts = currentBookingKey.split('_');
+      var docId = parts[0];
+      var time = parts[1];
+      var isPreferred = document.getElementById('b-preferred').checked;
+      var dateISO = (ganttContext === 'list' && rlSelectedDate)
+        ? rlSelectedDate.year + '-' + String(rlSelectedDate.month).padStart(2,'0') + '-' + String(rlSelectedDate.day).padStart(2,'0')
+        : todayISO;
+      try {
+        var res = await fetch('/api/admin/reservations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            card_id: card,
+            staff_slug: docId,
+            date: dateISO,
+            time_slot: time,
+            is_preferred: isPreferred
+          })
+        });
+        var data = await res.json();
+        if (!res.ok) {
+          document.getElementById('b-error').textContent = data.error || '予約の登録に失敗しました';
+          btn.disabled = false; btn.textContent = '確定'; return;
+        }
+        var name = data.patient_name || card;
+        var resId = data.reservation ? data.reservation.id : null;
+        getActiveReservations()[currentBookingKey] = { name: name, card: card, status: '予約済', resId: resId, doctorPreferred: isPreferred, doctorHistory: [] };
+        closeBooking(); activeRenderGantt();
+        showToast(time + ' に ' + name + 'さんの予約を追加しました');
+        openPatientDetail(card, ganttContext === 'list' ? 'list' : 'dashboard');
+      } catch(e) {
+        document.getElementById('b-error').textContent = '予約の登録に失敗しました';
+        btn.disabled = false; btn.textContent = '確定';
+      }
     }
   };
 
@@ -4469,7 +4652,13 @@
       if (rlSelectedDate) {
         document.getElementById('list-calendar-view').style.display = 'none';
         document.getElementById('list-gantt-view').style.display = 'flex';
-        renderListGantt();
+        // 最新データを再取得してからレンダリング
+        var dateStr = rlSelectedDate.year + '-' + String(rlSelectedDate.month).padStart(2, '0') + '-' + String(rlSelectedDate.day).padStart(2, '0');
+        loadReservationDataForDate(dateStr).then(function(apiRes) {
+          listDateReservations = apiRes;
+          renderListGantt();
+          updateRefreshIndicator();
+        }).catch(function() { renderListGantt(); });
       }
     } else { _origNavBack(); }
   };
@@ -5328,8 +5517,8 @@
 
   buildMonthOptions();
 
-  /* 日曜日は休診日 → ガントチャート非表示 */
-  if (TODAY.getDay() === 0) {
+  /* 日曜日・祝日は休診日 → ガントチャート非表示 */
+  if (TODAY.getDay() === 0 || isHoliday(todayYear, todayMonth, todayDate)) {
     document.getElementById('dash-gantt-area').style.display = 'none';
     document.getElementById('dash-closed-message').style.display = 'flex';
   } else {
@@ -5574,9 +5763,10 @@ async function loadReservationData(dateStr) {
     // 曜日を取得（スケジュール判定用）
     var dp = dateStr.split('-');
     var loadDow = new Date(parseInt(dp[0]), parseInt(dp[1])-1, parseInt(dp[2])).getDay();
-    // staff_idがある予約を先に配置
+    // staff_idがある予約を先に配置（actual_staff_idがあればそちらを使用）
     data.filter(function(r) { return r.staffId; }).forEach(function(r) {
-      var key = r.staffId + '_' + r.time.slice(0, 5);
+      var placementId = r.actualStaffId || r.staffId;
+      var key = placementId + '_' + r.time.slice(0, 5);
       reservations[key] = {
         resId: r.id,
         name: r.patientName,
@@ -5585,7 +5775,7 @@ async function loadReservationData(dateStr) {
         doctorPreferred: true,
         preferredStaffId: r.staffId,
         originalDocId: r.staffId,
-        doctorHistory: []
+        doctorHistory: (r.actualStaffId && r.actualStaffId !== r.staffId) ? [r.actualStaffId] : []
       };
     });
     // staff_idがnullの予約をactual_staff_idで配置（フォールバック: シャッフル）
@@ -5650,9 +5840,10 @@ async function loadReservationDataForDate(dateStr) {
     // 曜日を取得（スケジュール判定用）
     var dp = dateStr.split('-');
     var loadDow = new Date(parseInt(dp[0]), parseInt(dp[1])-1, parseInt(dp[2])).getDay();
-    // staff_idがある予約を先に配置
+    // staff_idがある予約を先に配置（actual_staff_idがあればそちらを使用）
     data.filter(function(r) { return r.staffId; }).forEach(function(r) {
-      var key = r.staffId + '_' + r.time.slice(0, 5);
+      var placementId = r.actualStaffId || r.staffId;
+      var key = placementId + '_' + r.time.slice(0, 5);
       result[key] = {
         resId: r.id,
         name: r.patientName,
@@ -5661,7 +5852,7 @@ async function loadReservationDataForDate(dateStr) {
         doctorPreferred: true,
         preferredStaffId: r.staffId,
         originalDocId: r.staffId,
-        doctorHistory: []
+        doctorHistory: (r.actualStaffId && r.actualStaffId !== r.staffId) ? [r.actualStaffId] : []
       };
     });
     // staff_idがnullの予約をactual_staff_idで配置（フォールバック: シャッフル）
@@ -5748,7 +5939,7 @@ async function loadInitialData() {
     loadPatientData()
   ]);
   // データ読み込み後に画面を再描画
-  if (TODAY.getDay() !== 0) {
+  if (TODAY.getDay() !== 0 && !isHoliday(todayYear, todayMonth, todayDate)) {
     renderGantt();
   }
   searchPatients();
@@ -5757,6 +5948,104 @@ async function loadInitialData() {
 document.addEventListener('DOMContentLoaded', function() {
   loadInitialData();
 });
+
+/* ════════════════════════════════════════
+   自動データ更新（60秒ごと）
+   ════════════════════════════════════════ */
+var autoRefreshTimer = null;
+var lastRefreshTime = null;
+
+function updateRefreshIndicator() {
+  var now = new Date();
+  var h = String(now.getHours()).padStart(2, '0');
+  var m = String(now.getMinutes()).padStart(2, '0');
+  var s = String(now.getSeconds()).padStart(2, '0');
+  var el = document.getElementById('topbar-date');
+  if (el) el.textContent = '最終更新: ' + h + ':' + m + ':' + s;
+  lastRefreshTime = now;
+}
+
+function isAnyModalOpen() {
+  var overlays = document.querySelectorAll('.modal-overlay.open');
+  return overlays.length > 0;
+}
+
+function getCurrentPageId() {
+  var activePage = document.querySelector('.page.active');
+  return activePage ? activePage.id : '';
+}
+
+async function autoRefreshData() {
+  // モーダルが開いている間はスキップ
+  if (isAnyModalOpen()) return;
+
+  var pageId = getCurrentPageId();
+
+  // ダッシュボード（今日のガントチャート）
+  if (pageId === 'page-dashboard') {
+    try {
+      await loadReservationData(todayISO);
+      renderGantt();
+      updateRefreshIndicator();
+    } catch(e) { console.error('自動更新失敗(dashboard):', e); }
+    return;
+  }
+
+  // 予約一覧ページ（日付ガントチャート表示中のみ）
+  if (pageId === 'page-list' && ganttContext === 'list' && rlSelectedDate) {
+    var dateStr = rlSelectedDate.year + '-' + String(rlSelectedDate.month).padStart(2, '0') + '-' + String(rlSelectedDate.day).padStart(2, '0');
+    try {
+      var apiRes = await loadReservationDataForDate(dateStr);
+      listDateReservations = apiRes;
+      renderListGantt();
+      updateRefreshIndicator();
+    } catch(e) { console.error('自動更新失敗(list):', e); }
+    return;
+  }
+
+  // 患者情報ページ（患者詳細が開いている場合）
+  if (pageId === 'page-patient-detail' && currentPatientCard) {
+    try {
+      await renderPatientReservations(currentPatientCard);
+      renderPastVisits(currentPatientCard);
+      updateRefreshIndicator();
+    } catch(e) { console.error('自動更新失敗(patient):', e); }
+    return;
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  autoRefreshTimer = setInterval(autoRefreshData, 60000);
+  updateRefreshIndicator();
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+}
+
+// 初回データ読み込み完了後に自動更新を開始
+var _origLoadInitialData = loadInitialData;
+loadInitialData = async function() {
+  await _origLoadInitialData();
+  startAutoRefresh();
+};
+
+// タブ復帰時・ページフォーカス時に最新データを再取得
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible' && !isAnyModalOpen()) {
+    autoRefreshData();
+  }
+});
+window.addEventListener('focus', function() {
+  if (!isAnyModalOpen()) {
+    autoRefreshData();
+  }
+});
+
 
 </script>
 <!-- パスワード認証モーダル -->
