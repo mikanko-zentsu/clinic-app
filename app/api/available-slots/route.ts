@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
@@ -80,12 +82,12 @@ export async function GET(req: NextRequest) {
     // 2. Get reserved slots from Supabase
     let query = supabase
       .from("reservations")
-      .select("time_slot, actual_staff_id")
+      .select("time_slot, actual_staff_id, staff_id")
       .eq("date", dateParam)
       .neq("status", "cancelled");
 
     if (staffId) {
-      query = query.eq("actual_staff_id", staffId);
+      query = query.or(`actual_staff_id.eq.${staffId},and(actual_staff_id.is.null,staff_id.eq.${staffId})`);
     }
 
     const { data, error } = await query;
@@ -93,10 +95,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 3. Normalize time_slot to HH:MM format for comparison
+    // 3. Normalize time_slot to HH:MM format and resolve effective staff ID
     const reservations = (data ?? []).map((r) => ({
       time: String(r.time_slot ?? "").substring(0, 5),
-      doctor: r.actual_staff_id as string | null,
+      doctor: (r.actual_staff_id ?? r.staff_id) as string | null,
     }));
 
     // 4. Determine availability

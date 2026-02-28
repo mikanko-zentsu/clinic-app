@@ -43,7 +43,7 @@ export function ReservationCalendar({ onSelectDate, doctorId, hideCount }: Reser
       month: String(viewMonth),
       ...(doctorId ? { staffId: doctorId } : {}),
     });
-    fetch(`/api/available-count?${params}`)
+    fetch(`/api/available-count?${params}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {
         const map = new Map<string, DayCount>();

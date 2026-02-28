@@ -103,6 +103,7 @@ function ReserveContent() {
   const [countdown, setCountdown] = useState(10);
   const [slots, setSlots] = useState<SlotsResponse | null>(null);
   const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsCacheBuster, setSlotsCacheBuster] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -115,13 +116,13 @@ function ReserveContent() {
       setSlots(null);
       const params = new URLSearchParams({ date: selectedDate });
       if (selectedDoctor) params.set("staffId", selectedDoctor.id);
-      fetch(`/api/available-slots?${params}`)
+      fetch(`/api/available-slots?${params}&_t=${slotsCacheBuster}`, { cache: 'no-store' })
         .then((r) => r.json())
         .then((data) => setSlots(data))
         .catch(() => setError("スロット情報の取得に失敗しました"))
         .finally(() => setSlotsLoading(false));
     }
-  }, [step, selectedDate, selectedDoctor]);
+  }, [step, selectedDate, selectedDoctor, slotsCacheBuster]);
 
   // Countdown on complete
   useEffect(() => {
@@ -163,7 +164,7 @@ function ReserveContent() {
       else router.push("/");
     }
     else if (step === "time") setStep("calendar");
-    else if (step === "card") setStep("time");
+    else if (step === "card") { setSlotsCacheBuster(Date.now()); setStep("time"); }
     else if (step === "confirm") setStep("card");
     else router.push("/");
   };
@@ -178,7 +179,7 @@ function ReserveContent() {
   const handleDateSelect = (date: string) => {
     setSelectedDate(date);
     setError(null);
-    setTimeout(() => setStep("time"), 250);
+    setTimeout(() => { setSlotsCacheBuster(Date.now()); setStep("time"); }, 250);
   };
 
   const handleTimeSelect = (slot: Slot) => {
