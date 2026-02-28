@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
         .single();
 
       const maskedName = patient?.name
-        ? patient.name.split(" ").map((part) => part.length > 0 ? part[0] + "*".repeat(part.length - 1) : "").join(" ")
+        ? patient.name.split(" ").map((part: string) => part.length > 0 ? part[0] + "*".repeat(part.length - 1) : "").join(" ")
         : null;
 
       const statusLabel = (s: string) => {
